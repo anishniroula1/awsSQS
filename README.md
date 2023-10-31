@@ -6,6 +6,9 @@ This repository contains a Python script for interacting with Amazon Simple Queu
 
 The script demonstrates basic operations with an SQS queue including creating a queue, sending a message to the queue, receiving messages from the queue, processing received messages, and deleting processed messages from the queue.
 
+# Test Code
+```python3 -m pytest tests/<test_file>.py```
+
 # Setup 
 - Create a .env file
 - add `AWS_ACCESS_KEY_ID` 
