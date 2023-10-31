@@ -16,4 +16,3 @@ def test_send_message(mock_client):
     result = send_message('http://example.com/queue', 'Hello, World!')
     assert result is None  # Since send_message doesn't return anything
 
-# ... similarly for other functions
