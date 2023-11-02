@@ -1,81 +1,78 @@
 import boto3
-import json
 from botocore.exceptions import ClientError
 
+# Initialize a session using Amazon SQS
 sqs = boto3.client('sqs')
-queue_url = None
 
 def create_queue(queue_name):
-    global queue_url
     try:
         response = sqs.create_queue(
-            QueueName=queue_name,
-            Attributes={
-                'FifoQueue': 'true',
-                'ContentBasedDeduplication': 'true'
-            }
+            QueueName=f'{queue_name}.fifo',  # Ensure the queue name ends with .fifo
+            Attributes={'FifoQueue': 'true'}  # Specify this is a FIFO queue
         )
-        queue_url = response['QueueUrl']
-        print(f'Queue URL: {queue_url}')
-        return queue_url
+        print(f'Queue URL: {response["QueueUrl"]}')
+        return response['QueueUrl']
     except ClientError as e:
         print(f'An error occurred: {e}')
         return None
 
-def send_message(message_body, message_group_id):
-    if queue_url is None:
-        print('Queue URL is None. Cannot send message.')
-        return None
-
+def send_message(queue_url, message):
     try:
         response = sqs.send_message(
             QueueUrl=queue_url,
-            MessageBody=json.dumps(message_body),
-            MessageGroupId=message_group_id
+            MessageBody=message,
+            # MessageGroupId='1',  # You can change this as per your use case
+            # MessageDeduplicationId=message,  # Optional, omit if ContentBasedDeduplication is enabled
+            MessageAttributes={
+                'Attribute1': {'StringValue': 'Value1', 'DataType': 'String'},
+                'Attribute2': {'StringValue': 'Value2', 'DataType': 'String'},
+            }
         )
-        return response
-    except Exception as e:
-        print(f"An error occurred: {e}")
-        return None
+        print(f'Message ID: {response["MessageId"]}')
+    except ClientError as e:
+        print(f'An error occurred: {e}')
 
-def receive_messages():
-    if queue_url is None:
-        print('Queue URL is None. Cannot receive messages.')
-        return None
 
+def receive_messages(queue_url):
     try:
         response = sqs.receive_message(
             QueueUrl=queue_url,
-            MaxNumberOfMessages=10  # Adjust as needed
+            MaxNumberOfMessages=10,
+            WaitTimeSeconds=5,
+            MessageAttributeNames=['All']  # Retrieve all message attributes
         )
-        return response.get('Messages', [])
-    except Exception as e:
-        print(f"An error occurred: {e}")
+        messages = response.get('Messages', [])
+        return messages
+    except ClientError as e:
+        print(f'An error occurred: {e}')
         return None
 
-def delete_message(receipt_handle):
-    if queue_url is None:
-        print('Queue URL is None. Cannot delete message.')
-        return None
-
+def delete_messages(queue_url, messages):
+    entries = [{'Id': msg['MessageId'], 'ReceiptHandle': msg['ReceiptHandle']} for msg in messages]
     try:
-        sqs.delete_message(
-            QueueUrl=queue_url,
-            ReceiptHandle=receipt_handle
-        )
-    except Exception as e:
-        print(f"An error occurred: {e}")
-        return None
+        response = sqs.delete_message_batch(QueueUrl=queue_url, Entries=entries)
+        for result in response.get('Successful', []):
+            print(f'Message {result["Id"]} deleted successfully')
+    except ClientError as e:
+        print(f'An error occurred: {e}')
 
-# Usage
-if __name__ == "__main__":
-    create_queue('testFifo.fifo')
-    
-    if queue_url is not None:
-        send_message({'hello': 'world'}, 'messageGroup1')
-        messages = receive_messages()
-        for message in messages:
-            print(message['Body'])
-            delete_message(message['ReceiptHandle'])
-    else:
-        print('Failed to create queue. Cannot proceed.')
+def process_message(message):
+    print(f'Processing message: {message["Body"]}')
+    attributes = message.get('MessageAttributes', {})
+    for name, value in attributes.items():
+        print(f' - {name}: {value["StringValue"]}')
+
+if __name__ == '__main__':
+    queue_name = 'testFifo'
+    queue_url = create_queue(queue_name)
+    if queue_url:
+        message = 'Hello, World!'
+        # send_message(queue_url, message)
+        while True:
+            messages = receive_messages(queue_url)
+            if messages:
+                print(messages, 123)
+                for message in messages:
+                    process_message(message)
+                delete_messages(queue_url, messages)
+

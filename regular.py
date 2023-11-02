@@ -19,7 +19,7 @@ def send_message(queue_url, message):
             QueueUrl=queue_url,
             MessageBody=message,
             MessageAttributes={
-                'Attribute1': {'StringValue': 'Value1', 'DataType': 'String'},
+                'Attribute1': {'StringValue': 'fuck', 'DataType': 'String'},
                 'Attribute2': {'StringValue': 'Value2', 'DataType': 'String'},
             }
         )
