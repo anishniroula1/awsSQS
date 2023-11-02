@@ -21,11 +21,16 @@ def send_message(queue_url, message):
         response = sqs.send_message(
             QueueUrl=queue_url,
             MessageBody=message,
-            # MessageGroupId='1',  # You can change this as per your use case
-            # MessageDeduplicationId=message,  # Optional, omit if ContentBasedDeduplication is enabled
+            MessageGroupId='1',  # You can change this as per your use case
             MessageAttributes={
-                'Attribute1': {'StringValue': 'Value1', 'DataType': 'String'},
-                'Attribute2': {'StringValue': 'Value2', 'DataType': 'String'},
+                'Attribute1': {
+                    'StringValue': 'Value1',
+                    'DataType': 'String'
+                },
+                'Attribute2': {
+                    'StringValue': 'Value2',
+                    'DataType': 'String'
+                }
             }
         )
         print(f'Message ID: {response["MessageId"]}')
@@ -66,8 +71,8 @@ if __name__ == '__main__':
     queue_name = 'testFifo'
     queue_url = create_queue(queue_name)
     if queue_url:
-        message = 'Hello, World!'
-        # send_message(queue_url, message)
+        message = 'My baby!'
+        send_message(queue_url, message)
         while True:
             messages = receive_messages(queue_url)
             if messages:
