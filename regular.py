@@ -57,11 +57,11 @@ def process_message(message):
         print(f' - {name}: {value["StringValue"]}')
 
 if __name__ == '__main__':
-    queue_name = 'first'
+    queue_name = 'test'
     queue_url = create_queue(queue_name)
     if queue_url:
         message = 'Hello, World!'
-        # send_message(queue_url, message)
+        send_message(queue_url, message)
         while True:
             messages = receive_messages(queue_url)
             if messages:
