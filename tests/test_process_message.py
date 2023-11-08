@@ -1,48 +1,48 @@
-import asyncio
 import pytest
-import boto3
-from moto import mock_s3
+from unittest.mock import patch, MagicMock
 
-from fifoSQS import process_message
+from test_sub_flow import process_message
+
+# Mock the S3 client to prevent actual AWS calls
+@pytest.fixture
+def mock_s3_client():
+    with patch('boto3.client') as mock:
+        yield mock
 
 @pytest.fixture
-def aws_credentials():
-    """Mocked AWS Credentials for moto."""
-    boto3.setup_default_session(
-        aws_access_key_id="testing",
-        aws_secret_access_key="testing",
-        aws_session_token="testing",
-    )
+def mock_prefect_task():
+    with patch('prefect.task', side_effect=lambda f: f) as mock:
+        yield mock
 
-@pytest.fixture
-def s3_client(aws_credentials):
-    with mock_s3():
-        yield boto3.client('s3', region_name='us-east-1')
-
-def test_process_message_none():
-    loop = asyncio.get_event_loop()
-    result = loop.run_until_complete(process_message(None))
+# Test when message is None
+def test_process_message_none(mock_prefect_task):
+    result = process_message(None)
     assert result is None
 
-def test_process_message_missing_keys(s3_client):
-    loop = asyncio.get_event_loop()
-    s3_client.create_bucket(Bucket='mybucket')
-    message = {'id': '1234', 's3_key': 'file.txt'}  # Missing 'bucket_name'
-    result = loop.run_until_complete(process_message(message))
+# Test when message is valid but the S3 object does not exist
+def test_process_message_valid_but_no_s3_object(mock_s3_client, mock_prefect_task):
+    mock_s3_client.return_value.get_object.side_effect = Exception("S3 Object not found")
+    
+    message = {'id': 'some-id', 'bucket_name': 'bucket', 's3_key': 'key'}
+    result = process_message(message)
     assert result is None
 
-def test_process_message_s3_error(s3_client):
-    loop = asyncio.get_event_loop()
-    s3_client.create_bucket(Bucket='mybucket')
-    message = {'id': '1234', 'bucket_name': 'mybucket', 's3_key': 'nonexistentfile.txt'}
-    with pytest.raises(Exception):
-        loop.run_until_complete(process_message(message))
+# Test when message is valid and S3 object is retrieved
+def test_process_message_valid_with_s3_object(mock_s3_client, mock_prefect_task):
+    mock_response = {
+        'Body': MagicMock(read=MagicMock(return_value=b'some data')),
+        'ContentLength': 9
+    }
+    mock_s3_client.return_value.get_object.return_value = mock_response
+    
+    message = {'id': 'some-id', 'bucket_name': 'bucket', 's3_key': 'key'}
+    result = process_message(message)
+    assert result == {'document_bytestream': b'some data', 'file_size': 9}
 
-def test_process_message_success(s3_client):
-    loop = asyncio.get_event_loop()
-    s3_client.create_bucket(Bucket='mybucket')
-    s3_client.put_object(Bucket='mybucket', Key='file.txt', Body=b'file content')
-    message = {'id': '1234', 'bucket_name': 'mybucket', 's3_key': 'file.txt'}
-    result = loop.run_until_complete(process_message(message))
-    assert result is not None
-    assert result['file_size'] == len(b'file content')
+# Test when message is valid and S3 object retrieval fails
+def test_process_message_valid_with_s3_failure(mock_s3_client, mock_prefect_task):
+    mock_s3_client.return_value.get_object.side_effect = Exception("Failed to retrieve S3 Object")
+    
+    message = {'id': 'some-id', 'bucket_name': 'bucket', 's3_key': 'key'}
+    result = process_message(message)
+    assert result is None
