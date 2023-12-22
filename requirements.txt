@@ -2,3 +2,4 @@ boto3>=1.26.79
 pytest>=7.2.1
 dacite >=1.8.1
 spacy==3.6.0
+sqlalchemy==2.0.23
