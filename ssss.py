@@ -1,35 +1,16 @@
-# Define the list of allowed section names
-allowed_section_names = ["b1a", "b2a", "b2", "b3a", "b3b", "b4"]
+# Redefining necessary data as the execution state was reset
 
-# Define the object x
+# Object with data
 x = {
-    'experiencedMistreatment': {
-        "additionalExplanation": 'hello',
-        'question': True
-    },
-    'fearMistreatment': {
-        "additionalExplanation": 'freind',
-        'question': True
-    },
-    'beenImprisoned': {
-        "additionalExplanation": 'oh no',
-        'question': True
-    },
-    'belongsToOrganization': {
-        # "additionalExplanation": 'response',
-        'question': True
-    },
-    'participateInOrganization': {
-        "additionalExplanation": 'hi',
-        'question': True
-    },
-    'afraidOfTorture': {
-        "additionalExplanation": 'mother',
-        'question': True
-    }
+    'experiencedMistreatment': {"additionalExplanation": 'response', 'question': True},
+    'fearMistreatment': {"additionalExplanation": 'response', 'question': True},
+    'beenImprisoned': {"additionalExplanation": 'response', 'question': False},
+    'belongsToOrganization': {"additionalExplanation": 'response', 'question': True},
+    'participateInOrganization': {"additionalExplanation": 'response', 'question': True},
+    'afraidOfTorture': {"additionalExplanation": 'response', 'question': True}
 }
 
-# Define the key-value mapping
+# Key-value mapping for sections
 key_to_section = {
     'experiencedMistreatment': 'b1a',
     'fearMistreatment': 'b2a',
@@ -39,14 +20,11 @@ key_to_section = {
     'afraidOfTorture': 'b4'
 }
 
-# Process the object and map keys to section names
-mapped_data = []
-for key, value in x.items():
-    if key in key_to_section:
-        section_name = key_to_section[key]
-        if 'additionalExplanation' in value:
-            content = value['additionalExplanation']
-            mapped_data.append({'section_name': section_name, 'content': content})
+# More concise code using list comprehension
+mapped_data_cleaner = [
+    {'section_name': key_to_section[key], 'content': value['additionalExplanation']}
+    for key, value in x.items() if key in key_to_section and 'additionalExplanation' in value and 'question' in value and value['question']
+]
 
-print(mapped_data)
+print(mapped_data_cleaner)
 
