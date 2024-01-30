@@ -1,7 +1,5 @@
 import logging
-from CutomLogger import CustomLogger
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-
-logger.debug("This is a debug message from test_logging.py")
+def get_logs():
+    logger = logging.getLogger('myLogger')
+    logger.info('Hi there , from another file')
