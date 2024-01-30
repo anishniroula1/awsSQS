@@ -1,30 +1,41 @@
 import pytest
+from unittest.mock import MagicMock, create_autospec
+from sqlalchemy.orm import Session
 
 from db_connection import DBConnection
-from users import User, get_or_create_user
+from completed.users import User
 
-# Assuming you have a setup for test database URL
-TEST_DATABASE_URL = "postgresql://user:password@localhost/test_db"
+@pytest.fixture
+def mock_session():
+    # Create a mock session object
+    session = create_autospec(Session, instance=True)
+    session.query.return_value.filter_by.return_value.first.return_value = None
+    return session
 
-@pytest.fixture(scope="module")
-def db_session():
-    connection = DBConnection(TEST_DATABASE_URL)
-    yield connection.session
-    connection.session.close()
+@pytest.fixture
+def db_connection(mock_session):
+    # Create an instance of DBConnection with a mocked session
+    db_conn = DBConnection('postgresql://user:pass@localhost/dbname')
+    db_conn.session = mock_session
+    return db_conn
 
-def test_create_new_user(db_session):
-    username = "new_test_user"
-    user_id = get_or_create_user(db_session, username)
-    assert user_id is not None
-    # Further checks can be added to ensure the user is properly created
+def test_get_or_create_user_new_user(db_connection, mock_session):
+    # Test the creation of a new user
+    username = 'new_user'
+    db_connection.get_or_create_user(username)
 
-def test_get_existing_user(db_session):
-    username = "existing_test_user"
-    # Create a user first
+    # Check if a new User object was added to the session
+    mock_session.add.assert_called_once()
+    mock_session.commit.assert_called_once()
+
+def test_get_or_create_user_existing_user(db_connection, mock_session):
+    # Test the retrieval of an existing user
+    username = 'existing_user'
     existing_user = User(username=username)
-    db_session.add(existing_user)
-    db_session.commit()
+    mock_session.query.return_value.filter_by.return_value.first.return_value = existing_user
 
-    user_id = get_or_create_user(db_session, existing_user.username)
+    user_id = db_connection.get_or_create_user(username)
+
+    # Check if the correct user ID is returned without adding a new user
     assert user_id == existing_user.id
-    # Further checks can be added to ensure the correct user ID is returned
+    mock_session.add.assert_not_called()

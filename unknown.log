@@ -1,0 +1,8 @@
+2024-01-30 14:08:13,058 - __main__ - DEBUG - This is a debug message
+2024-01-30 14:08:21,660 - __main__ - DEBUG - This is a debug message
+2024-01-30 15:42:14,132 - __main__ - DEBUG - This is a debug message from test_logging.py
+2024-01-30 15:42:31,420 - __main__ - DEBUG - This is a debug message from test_logging.py
+2024-01-30 15:42:55,218 - __main__ - DEBUG - This is a debug message
+2024-01-30 15:43:05,513 - __main__ - INFO - This is a debug message
+2024-01-30 15:43:21,439 - __main__ - INFO - This is a debug message
+2024-01-30 15:45:18,850 - __main__ - INFO - This is a debug message
