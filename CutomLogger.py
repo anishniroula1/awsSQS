@@ -2,17 +2,6 @@ import inspect
 import logging
 import os
 
-class CustomFormatter(logging.Formatter):
-    DEFAULT_MESSAGE = "Default Message: "
-
-    def __init__(self, fmt, datefmt=None):
-        super().__init__(fmt, datefmt)
-
-    def format(self, record):
-        if getattr(record, 'show_default', False):
-            record.msg = f"{self.DEFAULT_MESSAGE}{record.msg}"
-        return super().format(record)
-
 class CustomLogger(logging.Logger):
     
     def __init__(self, name, level=logging.NOTSET):
