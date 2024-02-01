@@ -45,3 +45,8 @@ def test_logging_levels(setup_logger, level, method):
     getattr(logger, method)("Test message")
     log_stream.seek(0)
     assert log_stream.getvalue()  # Check if something was logged
+
+
+@classmethod
+def set_generic_message(cls, message: str):
+    os.environ["LOGGER_VARIABLE"] = message

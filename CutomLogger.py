@@ -42,4 +42,33 @@ class CustomLogger(logging.Logger):
     def critical(self, msg, *args, show_default=False, **kwargs):
         self._log_with_default_message(logging.CRITICAL, msg, args, kwargs, show_default)
 
+
+    @classmethod
+    def set_generic_message(cls, message: str):
+        """
+        Sets a default message in an environment variable 'LOGGER_VARIABLE' 
+        to be included in all log entries for the current session.
+
+        This method is useful for appending a consistent context (like a session ID) 
+        to logs across different parts of the application. It enhances log traceability 
+        and correlation during a specific operation or session.
+
+        Parameters:
+        message (str): The message to be appended to log entries.
+
+        Usage:
+        - Invoke at the start of a session to set the message.
+        - Unset (set to an empty string or None) at the session's end to avoid message persistence 
+          in subsequent logs, which might cause misinterpretation.
+
+        Example:
+        CustomLogger.set_generic_message("SessionID:12345")
+        # ... your code ...
+        CustomLogger.set_generic_message("")  # Unsetting after use
+        """
+        os.environ["LOGGER_VARIABLE"] = message
+
+    # ... rest of the CustomLogger methods ...
+
+
 # Set the custom logger class as the default for new loggers
