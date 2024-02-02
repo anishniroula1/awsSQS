@@ -1,74 +1,47 @@
-import inspect
 import logging
 import os
 
-class CustomLogger(logging.Logger):
-    
-    def __init__(self, name, level=logging.NOTSET):
-        super().__init__(name, level)
+class CustomLogger:
+    DEFAULT_MESSAGE = os.getenv("LOGGER_VARIABLE", "")
 
-    def find_caller(self, stack_info=False, stacklevel=1):
-        """
-        Find the stack frame of the caller so that we can note the source
-        file name, line number and function name.
-        """
-        frame = inspect.currentframe()
-        while frame:
-            frame_info = inspect.getframeinfo(frame)
-            filename = frame_info.filename
-            # Check if the frame is outside of the logging module
-            if "logging" not in filename and filename != __file__:
-                return (filename, frame_info.lineno, frame_info.function, None)
-            frame = frame.f_back
-        return "(unknown file)", 0, "(unknown function)", None
+    def __init__(self, name="customLogger", level=logging.INFO):
+        self.logger = logging.getLogger(name)
+        self.logger.setLevel(level)
+        if not self.logger.hasHandlers():
+            # Add a stream handler to the logger if it doesn't already have one
+            ch = logging.StreamHandler()
+            formatter = logging.Formatter('%(asctime)s - %(filename)s - %(levelname)s - %(message)s')
+            ch.setFormatter(formatter)
+            self.logger.addHandler(ch)
 
-    def _log_with_default_message(self, level, msg, args, kwargs, show_default):
-        fn, lno, func, sinfo = self.find_caller()
-        record = self.makeRecord(self.name, level, fn, lno, msg, args, kwargs, func)
-        self.handle(record)
+    def _log(self, level, message, args, **kwargs):
+        # Prepend the default message if it's set
+        if CustomLogger.DEFAULT_MESSAGE:
+            message = f"{CustomLogger.DEFAULT_MESSAGE} {message}"
+        self.logger.log(level, message, *args, **kwargs)
 
-    def debug(self, msg, *args, show_default=False, **kwargs):
-        self._log_with_default_message(logging.DEBUG, msg, args, kwargs, show_default)
+    def debug(self, message, *args, **kwargs):
+        self._log(logging.DEBUG, message, args, **kwargs)
 
-    def info(self, msg, *args, show_default=False, **kwargs):
-        self._log_with_default_message(logging.INFO, msg, args, kwargs, show_default)
+    def info(self, message, *args, **kwargs):
+        self._log(logging.INFO, message, args, **kwargs)
 
-    def warning(self, msg, *args, show_default=False, **kwargs):
-        self._log_with_default_message(logging.WARNING, msg, args, kwargs, show_default)
+    def warning(self, message, *args, **kwargs):
+        self._log(logging.WARNING, message, args, **kwargs)
 
-    def error(self, msg, *args, show_default=False, **kwargs):
-        self._log_with_default_message(logging.ERROR, msg, args, kwargs, show_default)
+    def error(self, message, *args, **kwargs):
+        self._log(logging.ERROR, message, args, **kwargs)
 
-    def critical(self, msg, *args, show_default=False, **kwargs):
-        self._log_with_default_message(logging.CRITICAL, msg, args, kwargs, show_default)
-
+    def critical(self, message, *args, **kwargs):
+        self._log(logging.CRITICAL, message, args, **kwargs)
 
     @classmethod
     def set_generic_message(cls, message: str):
-        """
-        Sets a default message in an environment variable 'LOGGER_VARIABLE' 
-        to be included in all log entries for the current session.
-
-        This method is useful for appending a consistent context (like a session ID) 
-        to logs across different parts of the application. It enhances log traceability 
-        and correlation during a specific operation or session.
-
-        Parameters:
-        message (str): The message to be appended to log entries.
-
-        Usage:
-        - Invoke at the start of a session to set the message.
-        - Unset (set to an empty string or None) at the session's end to avoid message persistence 
-          in subsequent logs, which might cause misinterpretation.
-
-        Example:
-        CustomLogger.set_generic_message("SessionID:12345")
-        # ... your code ...
-        CustomLogger.set_generic_message("")  # Unsetting after use
-        """
         os.environ["LOGGER_VARIABLE"] = message
+        cls.DEFAULT_MESSAGE = message
 
-    # ... rest of the CustomLogger methods ...
-
-
-# Set the custom logger class as the default for new loggers
+# Usage example
+if __name__ == "__main__":
+    CustomLogger.set_generic_message("SessionID:XYZ")
+    log = CustomLogger()
+    log.info("This is an informational message.")
