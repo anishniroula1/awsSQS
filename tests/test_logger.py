@@ -1,49 +1,48 @@
-# Filename: test_custom_logger.py
 import logging
-import sys
-from io import StringIO
 import pytest
+from custom_logger import CustomLogger
 
-from CutomLogger import CustomLogger
+class MemoryHandler(logging.Handler):
+    """A logging handler that stores logs in a list."""
+    def __init__(self):
+        super().__init__()
+        self.log_records = []
+
+    def emit(self, record):
+        self.log_records.append(record)
 
 @pytest.fixture
-def logger():
-    """Fixture to provide a CustomLogger instance."""
-    CustomLogger.set_generic_message("")  # Reset generic message to default for each test
-    return CustomLogger()
+def logger_with_memory_handler():
+    """Fixture to provide a CustomLogger instance with a memory handler."""
+    logger = CustomLogger(name='testLoggerWithMemoryHandler', level=logging.DEBUG)
+    memory_handler = MemoryHandler()
+    # Clear existing handlers and add our custom memory handler
+    logger.internal_logger.handlers = []
+    logger.internal_logger.addHandler(memory_handler)
+    return logger, memory_handler
 
-@pytest.fixture
-def capture_log_output():
-    """Fixture to capture log output."""
-    original_stdout = sys.stdout  # Save a reference to the original standard output
-    sys.stdout = StringIO()  # Redirect standard output to a StringIO object.
-    yield sys.stdout
-    sys.stdout = original_stdout  # Reset the standard output to its original value
-
-def test_log_info_level(logger, capture_log_output):
+def test_log_info_level(logger_with_memory_handler):
+    logger, memory_handler = logger_with_memory_handler
     logger.info("This is an informational message.")
-    assert "INFO" in capture_log_output.getvalue()
-    assert "This is an informational message." in capture_log_output.getvalue()
+    
+    assert any("This is an informational message." in record.msg for record in memory_handler.log_records)
+    assert any(record.levelname == "INFO" for record in memory_handler.log_records)
 
-def test_generic_message_effect(logger, capture_log_output):
+def test_generic_message_effect(logger_with_memory_handler):
+    logger, memory_handler = logger_with_memory_handler
     CustomLogger.set_generic_message("Generic Prefix:")
     logger.info("Test message with prefix.")
-    output = capture_log_output.getvalue()
-    assert "Generic Prefix:" in output
-    assert "Test message with prefix." in output
+    
+    assert any("Generic Prefix: Test message with prefix." in record.msg for record in memory_handler.log_records)
 
-def test_different_log_levels(logger, capture_log_output):
+def test_different_log_levels(logger_with_memory_handler):
+    logger, memory_handler = logger_with_memory_handler
     logger.debug("Debug message")
     logger.warning("Warning message")
     logger.error("Error message")
     logger.critical("Critical message")
-    output = capture_log_output.getvalue()
-    assert "DEBUG" in output
-    assert "WARNING" in output
-    assert "ERROR" in output
-    assert "CRITICAL" in output
 
-# Since testing private methods like _find_caller directly is not a best practice in unit testing,
-# and because its functionality is inherently covered by testing the output of the public logging methods,
-# it's not included as a separate test case here.
-
+    assert any(record.levelname == "DEBUG" for record in memory_handler.log_records)
+    assert any(record.levelname == "WARNING" for record in memory_handler.log_records)
+    assert any(record.levelname == "ERROR" for record in memory_handler.log_records)
+    assert any(record.levelname == "CRITICAL" for record in memory_handler.log_records)
