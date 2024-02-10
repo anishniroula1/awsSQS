@@ -62,11 +62,18 @@ responses = [
 
 
 # Invert key_to_question so that questions map to keys
+class ResponseSection:
+    def __init__(self, section_name, content):
+        self.section_name = section_name
+        self.content = content
+
+
+# Assuming key_to_question and responses are defined as before, and question_to_key is generated
+
 question_to_key = {v: k for k, v in key_to_question.items()}
 
-# Now, iterate through responses and build listx in a single loop
 listx = [
-    {"section_name": question_to_key[response["question"]], "content": response["explanation"]}
+    ResponseSection(question_to_key[response["question"]], response["explanation"])
     for response in responses
     if response["question"] in question_to_key
 ]
