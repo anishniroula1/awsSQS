@@ -6,6 +6,11 @@ services:
       - "4444:4444"
     volumes:
       - /dev/shm:/dev/shm # Recommended to avoid Chrome crashes
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4444/wd/hub/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   test:
     build: .
@@ -13,3 +18,4 @@ services:
       - selenium-chrome
     environment:
       - SELENIUM_REMOTE_URL=http://selenium-chrome:4444/wd/hub
+    command: ["/wait-for-it.sh", "selenium-chrome:4444", "--", "python", "test_signup.py"]
