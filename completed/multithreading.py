@@ -15,7 +15,7 @@ with ThreadPoolExecutor(max_workers=5) as executor:
     futures = [executor.submit(task, n) for n in tasks]
 
     # Retrieve the results (if needed)
-    results = [future.result() for future in futures]
-    print(f"Results: {results}")
+    # results = [future.result() for future in futures]
+    # print(f"Results: {results}")
 
 # This code will execute the `task` function in parallel for each element in `tasks`.

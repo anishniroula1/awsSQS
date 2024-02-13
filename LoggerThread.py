@@ -1,9 +1,11 @@
 import logging
 import inspect
 import os
+import threading
 
 class CustomLogger:
-    DEFAULT_MESSAGE = os.getenv("LOGGER_VARIABLE", "")
+    # Thread-local storage for unique message identifiers
+    thread_context = threading.local()
 
     def __init__(self, name="customLogger", level=logging.INFO):
         self.internal_logger = logging.getLogger(name)
@@ -15,8 +17,12 @@ class CustomLogger:
             self.internal_logger.addHandler(ch)
 
     @classmethod
-    def set_generic_message(cls, message: str):
-        os.environ["LOGGER_VARIABLE"] = message
+    def set_thread_message(cls, message: str):
+        cls.thread_context.unique_message = message
+
+    @classmethod
+    def get_thread_message(cls):
+        return getattr(cls.thread_context, 'unique_message', "")
 
     def _find_caller(self):
         frame = inspect.currentframe()
@@ -31,8 +37,9 @@ class CustomLogger:
         return None, None
 
     def _log(self, level, message, *args, **kwargs):
-        if CustomLogger.DEFAULT_MESSAGE:
-            message = f"{CustomLogger.DEFAULT_MESSAGE} {message}"
+        thread_message = CustomLogger.get_thread_message()
+        if thread_message:
+            message = f"{thread_message} {message}"
         filename, lineno = self._find_caller()
         if filename and lineno:
             level_name = logging.getLevelName(level)
@@ -53,9 +60,3 @@ class CustomLogger:
 
     def critical(self, message, *args, **kwargs):
         self._log(logging.CRITICAL, message, *args, **kwargs)
-
-# Example usage
-# if __name__ == "__main__":
-#     CustomLogger.set_generic_message("Global Message:")
-#     logger = CustomLogger()
-#     logger.info("This is an informational message.")
