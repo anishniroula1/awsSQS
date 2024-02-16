@@ -1,39 +1,30 @@
-import pikepdf
-from io import BytesIO
+from pdf2image import convert_from_bytes
+import tempfile
 
-def compress_pdf_bytestream(pdf_bytes):
+def convert_pdf_bytestream_to_images(pdf_bytes):
     """
-    Compress a PDF bytestream using pikepdf.
+    Convert a PDF bytestream to images, one image per page.
 
     Args:
-    - pdf_bytes (bytes): The byte stream of the PDF to be compressed.
+    - pdf_bytes (bytes): The bytestream of the PDF to be converted.
 
     Returns:
-    - A byte stream of the compressed PDF.
+    - A list of images.
     """
-    # Load the PDF from bytes
-    with pikepdf.open(BytesIO(pdf_bytes)) as pdf:
-        # Create a BytesIO object for the output PDF
-        output_pdf_bytes = BytesIO()
+    # Write the PDF bytestream to a temporary file
+    with tempfile.NamedTemporaryFile(suffix='.pdf', delete=True) as temp_pdf_file:
+        temp_pdf_file.write(pdf_bytes)
+        temp_pdf_file.seek(0)  # Go back to the start of the file
         
-        # Save the PDF with compression options
-        pdf.save(
-            output_pdf_bytes,
-            object_stream_mode=pikepdf.ObjectStreamMode.generate,
-            compress_streams=True,
-            qdf=False
-        )
-        
-        # Reset the pointer to the beginning of the BytesIO object
-        output_pdf_bytes.seek(0)
-        
-        return output_pdf_bytes.getvalue()
+        # Convert the PDF file to images
+        images = convert_from_bytes(temp_pdf_file.read(), dpi=200, fmt='jpeg')
+    
+    return images
 
-# Your PDF bytes go here
-your_pdf_bytes = b'...'  # Replace '...' with your actual PDF bytes
+# Example usage with placeholder for actual PDF bytes
+pdf_bytes = b'your_pdf_bytes_here'  # Replace this with your actual PDF bytes
+images = convert_pdf_bytestream_to_images(pdf_bytes)
 
-# Compress the PDF bytestream
-compressed_pdf_bytes = compress_pdf_bytestream(your_pdf_bytes)
-
-# The `compressed_pdf_bytes` is now the compressed version of your original PDF bytestream.
-# You can save this to a file, send it over a network, etc., as needed.
+# Optionally, save the images to files
+for i, image in enumerate(images):
+    image.save(f'page_{i}.jpeg', 'JPEG')
