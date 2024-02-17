@@ -35,25 +35,25 @@ class FileProcessor:
             api.SetImage(image_pil)
             api.Recognize()
 
-            full_text = api.GetUTF8Text().strip()
-            iterator = api.GetIterator()
-            
+            full_text = ""
             ocr_confidence_per_char = []
-            if iterator:
-                for word in iterator:
-                    if tesserocr.RIL.WORD:
-                        word_text = word.GetUTF8Text(tesserocr.RIL.WORD)
-                        conf_value = word.Confidence(tesserocr.RIL.WORD)
-                        if word_text and not word_text.isspace():
-                            for char in (word_text + " "):
-                                ocr_confidence_per_char.append("0" if conf_value >= 85 else "1")
-                            full_text += word_text + " "
-                    if not word.Next(tesserocr.RIL.WORD):
-                        break
 
-        ocr_confidence_str = ''.join(ocr_confidence_per_char)
+            iter_ = api.GetIterator()
+            level = tesserocr.RIL.WORD
+            while iter_:
+                word = iter_.GetUTF8Text(level)  # Get the word text
+                if word:  # If there's a word
+                    conf_value = iter_.Confidence(level)
+                    for char in (word + " "):
+                        ocr_confidence_per_char.append("0" if conf_value >= 85 else "1")
+                    full_text += word + " "
+                if not iter_.Next(level):  # Move to the next word
+                    break
 
-        return full_text, ocr_confidence_str
+            full_text = full_text.strip()
+            ocr_confidence_str = ''.join(ocr_confidence_per_char)
+
+            return full_text, ocr_confidence_str
 
     def process_image_from_bytes(self):
         nparr = np.frombuffer(self.file_bytes, np.uint8)
