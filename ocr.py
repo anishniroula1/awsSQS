@@ -1,8 +1,8 @@
 import fitz  # PyMuPDF
 import cv2
 import numpy as np
-import pytesseract
-import os
+import tesserocr
+from PIL import Image
 
 class FileProcessor:
     def __init__(self, file_bytes, file_type):
@@ -30,19 +30,29 @@ class FileProcessor:
 
     @staticmethod
     def extract_text_from_image(image):
-        d = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT)
+        image_pil = Image.fromarray(image)
+        api = tesserocr.PyTessBaseAPI()
+        api.SetImage(image_pil)
+        api.Recognize()
+
         full_text = ""
         ocr_confidence_per_char = []
 
-        for i, word in enumerate(d['text']):
-            if word.strip():
+        iter_ = api.GetIterator()
+        if iter_:
+            while True:
                 try:
-                    conf_value = float(d['conf'][i])
-                    for char in (word + " "):
-                        ocr_confidence_per_char.append("0" if conf_value >= 85 else "1")
-                    full_text += word + " "
+                    word = iter_.GetUTF8Text(tesserocr.PageIteratorLevel.WORD)
+                    conf_value = iter_.Confidence(tesserocr.PageIteratorLevel.WORD)
+                    if word.strip():
+                        for char in (word + " "):
+                            ocr_confidence_per_char.append("0" if conf_value >= 85 else "1")
+                        full_text += word + " "
                 except ValueError:
                     continue
+
+                if not iter_.Next(tesserocr.PageIteratorLevel.WORD):
+                    break
 
         full_text = full_text.strip()
         ocr_confidence_str = ''.join(ocr_confidence_per_char)
@@ -77,7 +87,3 @@ class FileProcessor:
             return self.process_pdf_from_bytes()
         else:
             return self.process_image_from_bytes()
-
-ocr = FileProcessor(file_path='/test1.pdf')
-x = ocr.extract_text()
-print(x)
