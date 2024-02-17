@@ -1,8 +1,8 @@
 import fitz  # PyMuPDF
 import cv2
 import numpy as np
-import tesserocr
 from PIL import Image
+import tesserocr
 
 class FileProcessor:
     def __init__(self, file_bytes, file_type):
@@ -31,30 +31,26 @@ class FileProcessor:
     @staticmethod
     def extract_text_from_image(image):
         image_pil = Image.fromarray(image)
-        api = tesserocr.PyTessBaseAPI()
-        api.SetImage(image_pil)
-        api.Recognize()
+        with tesserocr.PyTessBaseAPI() as api:
+            api.SetImage(image_pil)
+            api.Recognize()
 
-        full_text = ""
-        ocr_confidence_per_char = []
+            full_text = api.GetUTF8Text().strip()
+            iterator = api.GetIterator()
+            
+            ocr_confidence_per_char = []
+            if iterator:
+                for word in iterator:
+                    if tesserocr.RIL.WORD:
+                        word_text = word.GetUTF8Text(tesserocr.RIL.WORD)
+                        conf_value = word.Confidence(tesserocr.RIL.WORD)
+                        if word_text and not word_text.isspace():
+                            for char in (word_text + " "):
+                                ocr_confidence_per_char.append("0" if conf_value >= 85 else "1")
+                            full_text += word_text + " "
+                    if not word.Next(tesserocr.RIL.WORD):
+                        break
 
-        iter_ = api.GetIterator()
-        if iter_:
-            while True:
-                try:
-                    word = iter_.GetUTF8Text(tesserocr.PageIteratorLevel.WORD)
-                    conf_value = iter_.Confidence(tesserocr.PageIteratorLevel.WORD)
-                    if word.strip():
-                        for char in (word + " "):
-                            ocr_confidence_per_char.append("0" if conf_value >= 85 else "1")
-                        full_text += word + " "
-                except ValueError:
-                    continue
-
-                if not iter_.Next(tesserocr.PageIteratorLevel.WORD):
-                    break
-
-        full_text = full_text.strip()
         ocr_confidence_str = ''.join(ocr_confidence_per_char)
 
         return full_text, ocr_confidence_str
