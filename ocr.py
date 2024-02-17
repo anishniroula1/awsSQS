@@ -78,6 +78,6 @@ class FileProcessor:
         else:
             return self.process_image_from_bytes()
 
-ocr = FileProcessor(file_path='/Users/anishniroula/Desktop/awsSQS/test1.pdf')
+ocr = FileProcessor(file_path='/test1.pdf')
 x = ocr.extract_text()
 print(x)
