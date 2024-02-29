@@ -1,19 +1,27 @@
-import fitz  # PyMuPDF
+import io
+from pdf2image import convert_from_bytes
 import cv2
 import numpy as np
 from PIL import Image
 import tesserocr
+from tesserocr import PyTessBaseAPI, RIL, PSM
+import spacy
 
-class FileProcessor:
-    def __init__(self, file_bytes, file_type):
-        self.file_bytes = file_bytes
-        self.file_type = file_type
-    
-    @staticmethod
-    def deskew(image):
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        gray = cv2.bitwise_not(gray)
-        coords = np.column_stack(np.where(gray > 0))
+class OCRProcessor:
+    def __init__(self):
+        # Load spaCy model for post-processing
+        self.nlp = spacy.load("en_core_web_sm")
+
+    def pdf_to_images(self, pdf_bytes):
+        """Converts PDF byte stream to a list of images."""
+        return convert_from_bytes(pdf_bytes)
+
+    def correct_image_alignment(self, image):
+        """Corrects the alignment of the given image using OpenCV."""
+        open_cv_image = np.array(image)
+        gray = cv2.cvtColor(open_cv_image, cv2.COLOR_BGR2GRAY)
+        _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        coords = np.column_stack(np.where(thresh > 0))
         angle = cv2.minAreaRect(coords)[-1]
         
         if angle < -45:
@@ -21,65 +29,51 @@ class FileProcessor:
         else:
             angle = -angle
 
-        (h, w) = image.shape[:2]
+        (h, w) = open_cv_image.shape[:2]
         center = (w // 2, h // 2)
         M = cv2.getRotationMatrix2D(center, angle, 1.0)
-        rotated = cv2.warpAffine(image, M, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+        corrected_image = cv2.warpAffine(open_cv_image, M, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+        corrected_image_pil = Image.fromarray(cv2.cvtColor(corrected_image, cv2.COLOR_BGR2RGB))
+        return corrected_image_pil
 
-        return rotated
+    def ocr_and_adjust_confidence(self, image):
+        """Performs OCR on the given image and adjusts confidence using spaCy."""
+        full_text = ""
+        text_confidences = []
 
-    @staticmethod
-    def extract_text_from_image(image):
-        image_pil = Image.fromarray(image)
-        with tesserocr.PyTessBaseAPI() as api:
-            api.SetImage(image_pil)
+        with PyTessBaseAPI(psm=PSM.AUTO) as api:
+            api.SetImage(image)
             api.Recognize()
+            ri = api.GetIterator()
+            level = RIL.WORD
 
-            full_text = ""
-            ocr_confidence_per_char = []
+            for r in tesserocr.iterate_level(ri, level):
+                word = r.GetUTF8Text(level)
+                conf = r.Confidence(level)
+                full_text += word + " "
+                text_confidences.append((word, conf))
 
-            iter_ = api.GetIterator()
-            level = tesserocr.RIL.WORD
-            while iter_:
-                word = iter_.GetUTF8Text(level)  # Get the word text
-                if word:  # If there's a word
-                    conf_value = iter_.Confidence(level)
-                    for char in (word + " "):
-                        ocr_confidence_per_char.append("0" if conf_value >= 85 else "1")
-                    full_text += word + " "
-                if not iter_.Next(level):  # Move to the next word
-                    break
+        doc = self.nlp(full_text.strip())
+        adjusted_confidences = []
 
-            full_text = full_text.strip()
-            ocr_confidence_str = ''.join(ocr_confidence_per_char)
+        for token in doc:
+            adjusted_conf = 0 if token.is_alpha and not token.is_stop else 1
+            adjusted_confidences.append((token.text, adjusted_conf))
 
-            return full_text, ocr_confidence_str
+        return full_text.strip(), adjusted_confidences
 
-    def process_image_from_bytes(self):
-        nparr = np.frombuffer(self.file_bytes, np.uint8)
-        image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        preprocessed_image = self.deskew(image)
-        text, ocr_confidence = self.extract_text_from_image(preprocessed_image)
-        return {"text": text, "ocr_confidence": ocr_confidence}
+    def execute_ocr_process(self, pdf_bytes):
+        """Executes the entire OCR process on the given PDF byte stream."""
+        images = self.pdf_to_images(pdf_bytes)
+        all_texts_and_confidences = []
 
-    def process_pdf_from_bytes(self):
-        doc = fitz.open("pdf", self.file_bytes)
-        all_text = ""
-        all_ocr_confidence = ""
-        for page_num in range(len(doc)):
-            page = doc.load_page(page_num)
-            pix = page.get_pixmap()
-            img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
-            if pix.n - 1:  # if not grayscale, convert to BGR
-                img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-            preprocessed_image = self.deskew(img)
-            text, ocr_confidence = self.extract_text_from_image(preprocessed_image)
-            all_text += text + " "
-            all_ocr_confidence += ocr_confidence
-        return {"text": all_text.strip(), "ocr_confidence": all_ocr_confidence}
+        for image in images:
+            corrected_image = self.correct_image_alignment(image)
+            full_text, adjusted_confidences = self.ocr_and_adjust_confidence(corrected_image)
+            all_texts_and_confidences.append((full_text, adjusted_confidences))
 
-    def extract_text(self):
-        if self.file_type == 'pdf':
-            return self.process_pdf_from_bytes()
-        else:
-            return self.process_image_from_bytes()
+        return all_texts_and_confidences
+
+
+with open('./test1.pdf', 'rb') as file:
+    print (file.read())
