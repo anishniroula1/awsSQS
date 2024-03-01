@@ -3,16 +3,14 @@ import numpy as np
 from pdf2image import convert_from_bytes
 from PIL import Image
 import spacy
+import tesserocr
 from tesserocr import PyTessBaseAPI, PSM, RIL
 
+from SpacySingleton import SpacySingleton
+
 class OCRProcessor:
-    def __init__(self):
-        try:
-            # Load spaCy model for post-processing
-            self.nlp = spacy.load("en_core_web_md")
-            print("Successfully loaded spaCy model.")
-        except Exception as e:
-            print(f"Error loading spaCy model: {e}")
+    def __init__(self, ocr_threshold = 90):
+        self.ocr_threshold = ocr_threshold
 
     def pdf_to_images(self, pdf_bytes):
         try:
@@ -67,7 +65,62 @@ class OCRProcessor:
         except Exception as e:
             print(f"Error correcting image alignment: {e}")
             return Image.fromarray(open_cv_image)  # Return original image if correction fails
+        
+    # def pil_page_to_text(self, page, return_confidence=False):
+    #     """  converts a page with PIL format to text includes confidence scores in return_confidence
+    #     param page: PIL.PpmImagePlugin.PpmImageFile
+    #     sparam return_confidence: adds confidence score to returned result :return: OCRed text as string or two strings if return_confidence
+    #     """
+    #     with PyTessBaseAPI(psm=PSM.AUTO, path="/usr/share/tesseract-ocr/5/tessdata") as api:
+    #     # set image as the current page
+    #     # note: SetImage is inherited from tesserocr.PyTessBaseAPI
+    #         api.SetImage(page)
+    #         # Recognize the previously page
+    #         # note: Recognize is inherited from tesserocr.PyTessBaseAPI
+    #         is_text_recognized = api.Recognize()
+    #         assert is_text_recognized is True
+    #         try:
+    #             text_words = [
+    #                 w.GetUTF8Text(tesserocr.RIL.WORD)
+    #                 for w in tesserocr.iterate_level(self.GetIterator(), tesserocr.RIL.WORD)]
+    #         except Exception:
+    #             if return_confidence:
+    #                 return "", ""
+    #             else:
+    #                 return ""
+    #         if return_confidence:
+    #         # iterate at a SYMBOL level - not word level
+    #         # such that the OCR confidence for each SYMBOL is returned
+    #         # w. Confidence returns score from 0 to 100 which are thresholded and assigne
+    #         # to 0 (good OCR) or 1 (bad OCR)
+    #         # NOTE: this method skips blank spaces
+    #             confidence_scores = [
+    #                 "o" if w.Confidence(tesserocr.RIL.SYMBOL) >= self.ocr_threshold else "1" 
+    #                 for w in tesserocr.iterate_level(api.GetIterator(), tesserocr.RIL.SYMBOL)
+    #             ]
+    #             # identify the skipped blank spaces via the word list, add a 0 in
+    #             cumulative_word_len = 0
+    #             for word in text_words[:-1]:
+    #                 cumulative_word_len += len(word)
+    #             # insert a 0 into list of OCR confidence scores where blank spots should be
+    #                 confidence_scores.insert (cumulative_word_len, "0")
+    #                 cumulative_word_len += 1
 
+    #                 # join scores together as a single string
+    #                 confidence_scores = "".join(confidence_scores)
+    #         else:
+    #             confidence_scores = None
+
+    #         # remove set image from memory
+    #         api.Clear()
+
+    #         # join list of words together as one string and return with confider
+    #         text_words = " ".join(text_words)
+    #         if return_confidence:
+    #             return text_words, confidence_scores 
+    #         else:
+    #             return text_words
+        
     def pil_page_to_text(self, page, return_confidence=True):
         full_text = ""
         ocr_confidences = []
@@ -84,8 +137,8 @@ class OCRProcessor:
                     conf = iter.Confidence(level)
 
                     if word and not word.isspace():  # Check if the word is not just space
-                        spacy_token = self.nlp(word.strip())
-                        adjusted_conf = '0' if any(token.is_alpha for token in spacy_token) else '1'  # High confidence if any token is alpha
+                        # spacy_token = self.nlp(word.strip())
+                        adjusted_conf = '0' if conf > 85 else '1'  # High confidence if any token is alpha
                         full_text += word + ' '
                         ocr_confidences.extend([adjusted_conf] * len(word.strip()))
                     else:
@@ -132,7 +185,7 @@ class OCRProcessor:
 # Example usage
 if __name__ == "__main__":
     try:
-        with open("./test1.pdf", "rb") as file:
+        with open("./test0.pdf", "rb") as file:
             print("Starting OCR process...")
             pdf_bytes = file.read()
             ocr_processor = OCRProcessor()
@@ -144,11 +197,12 @@ if __name__ == "__main__":
 
 
 
+
 """
 tesserocr==2.6.2
-spacy==3.6.0
-numpy==1.22.3
-pdf2image==1.16.0
-Pillow==8.4.0
-opencv-python-headless==4.5.5.62
+spacy==3.7.4
+numpy==1.26.4
+pdf2image==1.17.0
+Pillow==10.2.0
+opencv-python-headless==4.9.0.80
 """
