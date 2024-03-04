@@ -5,17 +5,39 @@ from PIL import Image
 import spacy
 import tesserocr
 from tesserocr import PyTessBaseAPI, PSM, RIL
-
-from SpacySingleton import SpacySingleton
+import fitz
 
 class OCRProcessor:
     def __init__(self, ocr_threshold = 90):
         self.ocr_threshold = ocr_threshold
 
+    # def pdf_to_images(self, pdf_bytes):
+    #     try:
+    #         # Converts PDF byte stream to a list of images
+    #         images = convert_from_bytes(pdf_bytes)
+    #         print(f"Successfully converted PDF to {len(images)} images.")
+    #         return images
+    #     except Exception as e:
+    #         print(f"Error converting PDF to images: {e}")
+    #         return []
+        
     def pdf_to_images(self, pdf_bytes):
+        images = []
         try:
-            # Converts PDF byte stream to a list of images
-            images = convert_from_bytes(pdf_bytes)
+            # Load PDF from bytes
+            pdf = fitz.open("pdf", pdf_bytes)
+            for page_number in range(len(pdf)):
+                # Get the page
+                page = pdf[page_number]
+
+                # Render page to an image (pix) - 300 dpi is a good resolution for OCR
+                pix = page.get_pixmap(dpi=70)
+                
+                # Convert the pix object to a PIL Image
+                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+
+                images.append(img)
+
             print(f"Successfully converted PDF to {len(images)} images.")
             return images
         except Exception as e:
