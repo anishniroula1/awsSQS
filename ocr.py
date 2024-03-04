@@ -24,19 +24,20 @@ class OCRProcessor:
     def pdf_to_images(self, pdf_bytes):
         images = []
         try:
-            # Load PDF from bytes
+            # Load PDF from bytes into fitz for any additional processing if needed
             pdf = fitz.open("pdf", pdf_bytes)
-            for page_number in range(len(pdf)):
-                # Get the page
-                page = pdf[page_number]
+            # Determine the number of pages using fitz
+            num_pages = len(pdf)
 
-                # Render page to an image (pix) - 300 dpi is a good resolution for OCR
-                pix = page.get_pixmap(dpi=70)
-                
-                # Convert the pix object to a PIL Image
-                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+            # Close the fitz PDF object as we don't need it for actual image conversion
+            pdf.close()
 
-                images.append(img)
+            # Convert each page to an image one at a time using pdf2image
+            for page_number in range(num_pages):
+                # Convert just this one page. Note the `first_page` and `last_page` parameters are zero-indexed
+                page_images = convert_from_bytes(pdf_bytes, first_page=page_number, last_page=page_number + 1, fmt='jpeg')
+                # Append the first (and only) image from the returned list (there will only be one image since we're converting one page at a time)
+                images.append(page_images[0])
 
             print(f"Successfully converted PDF to {len(images)} images.")
             return images
