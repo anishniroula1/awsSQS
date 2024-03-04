@@ -22,28 +22,28 @@ class OCRProcessor:
     #         return []
         
     def pdf_to_images(self, pdf_bytes):
-        images = []
-        try:
-            # Load PDF from bytes into fitz for any additional processing if needed
-            pdf = fitz.open("pdf", pdf_bytes)
-            # Determine the number of pages using fitz
-            num_pages = len(pdf)
+    images = []
+    try:
+        # Write PDF bytes to a temporary file
+        with tempfile.NamedTemporaryFile(delete=True, suffix='.pdf') as temp_pdf:
+            temp_pdf.write(pdf_bytes)
+            temp_pdf.seek(0)  # Go to the start of the file
 
-            # Close the fitz PDF object as we don't need it for actual image conversion
-            pdf.close()
+            # Determine the number of pages by converting the first page
+            temp_images = convert_from_path(temp_pdf.name, first_page=0, last_page=0)
+            num_pages = len(temp_images)  # Adjust based on actual page count if needed
 
-            # Convert each page to an image one at a time using pdf2image
+            # Convert each page to an image one at a time
             for page_number in range(num_pages):
-                # Convert just this one page. Note the `first_page` and `last_page` parameters are zero-indexed
-                page_images = convert_from_bytes(pdf_bytes, first_page=page_number, last_page=page_number + 1, fmt='jpeg')
-                # Append the first (and only) image from the returned list (there will only be one image since we're converting one page at a time)
-                images.append(page_images[0])
+                page_images = convert_from_path(temp_pdf.name, first_page=page_number, last_page=page_number, dpi=150, thread_count=1)
+                if page_images:  # Check if the list is not empty
+                    images.append(page_images[0])
 
             print(f"Successfully converted PDF to {len(images)} images.")
             return images
-        except Exception as e:
-            print(f"Error converting PDF to images: {e}")
-            return []
+    except Exception as e:
+        print(f"Error converting PDF to images: {e}")
+        return []
 
     @staticmethod
     def rotate_image(image, angle):
