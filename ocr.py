@@ -135,7 +135,7 @@ class OCRProcessor:
             combined_ocr_confidences = ""
             page_counter = 0  # Introduce a counter to track the number of pages processed
 
-            for image in self.pdf_to_images(pdf_bytes):
+            for (image, index) in enumerate(self.pdf_to_images(pdf_bytes)):
                 print(f"Processing page {page_counter + 1}...")
                 corrected_image = self.correct_image_alignment(image)
                 full_text, ocr_confidences = self.pil_page_to_text(corrected_image, return_confidence=True)
