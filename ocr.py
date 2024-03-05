@@ -1,6 +1,8 @@
+import os
+import tempfile
 import cv2
 import numpy as np
-from pdf2image import convert_from_bytes
+from pdf2image import convert_from_bytes, convert_from_path
 from PIL import Image
 import spacy
 import tesserocr
@@ -22,28 +24,26 @@ class OCRProcessor:
     #         return []
         
     def pdf_to_images(self, pdf_bytes):
-    images = []
-    try:
-        # Write PDF bytes to a temporary file
-        with tempfile.NamedTemporaryFile(delete=True, suffix='.pdf') as temp_pdf:
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_pdf:
             temp_pdf.write(pdf_bytes)
             temp_pdf.seek(0)  # Go to the start of the file
+            # Ensure the file is written and accessible
+            temp_pdf.flush()
+            os.fsync(temp_pdf.fileno())
 
-            # Determine the number of pages by converting the first page
-            temp_images = convert_from_path(temp_pdf.name, first_page=0, last_page=0)
-            num_pages = len(temp_images)  # Adjust based on actual page count if needed
+            # Open the temporary PDF to determine the number of pages
+            doc = fitz.open(temp_pdf.name)
+            num_pages = doc.page_count
+            doc.close()  # Close the PDF as it's no longer needed open
 
-            # Convert each page to an image one at a time
-            for page_number in range(num_pages):
-                page_images = convert_from_path(temp_pdf.name, first_page=page_number, last_page=page_number, dpi=150, thread_count=1)
+            # Convert and yield each page as an image
+            for page_number in range(1, num_pages + 1):  # Page numbers start from 1
+                page_images = convert_from_path(temp_pdf.name, first_page=page_number, last_page=page_number, dpi=200, thread_count=1)
                 if page_images:  # Check if the list is not empty
-                    images.append(page_images[0])
+                    yield page_images[0]  # Yield the first (and only) image from the list
 
-            print(f"Successfully converted PDF to {len(images)} images.")
-            return images
-    except Exception as e:
-        print(f"Error converting PDF to images: {e}")
-        return []
+            # Remove the temporary file after processing
+            os.remove(temp_pdf.name)
 
     @staticmethod
     def rotate_image(image, angle):
@@ -89,61 +89,6 @@ class OCRProcessor:
             print(f"Error correcting image alignment: {e}")
             return Image.fromarray(open_cv_image)  # Return original image if correction fails
         
-    # def pil_page_to_text(self, page, return_confidence=False):
-    #     """  converts a page with PIL format to text includes confidence scores in return_confidence
-    #     param page: PIL.PpmImagePlugin.PpmImageFile
-    #     sparam return_confidence: adds confidence score to returned result :return: OCRed text as string or two strings if return_confidence
-    #     """
-    #     with PyTessBaseAPI(psm=PSM.AUTO, path="/usr/share/tesseract-ocr/5/tessdata") as api:
-    #     # set image as the current page
-    #     # note: SetImage is inherited from tesserocr.PyTessBaseAPI
-    #         api.SetImage(page)
-    #         # Recognize the previously page
-    #         # note: Recognize is inherited from tesserocr.PyTessBaseAPI
-    #         is_text_recognized = api.Recognize()
-    #         assert is_text_recognized is True
-    #         try:
-    #             text_words = [
-    #                 w.GetUTF8Text(tesserocr.RIL.WORD)
-    #                 for w in tesserocr.iterate_level(self.GetIterator(), tesserocr.RIL.WORD)]
-    #         except Exception:
-    #             if return_confidence:
-    #                 return "", ""
-    #             else:
-    #                 return ""
-    #         if return_confidence:
-    #         # iterate at a SYMBOL level - not word level
-    #         # such that the OCR confidence for each SYMBOL is returned
-    #         # w. Confidence returns score from 0 to 100 which are thresholded and assigne
-    #         # to 0 (good OCR) or 1 (bad OCR)
-    #         # NOTE: this method skips blank spaces
-    #             confidence_scores = [
-    #                 "o" if w.Confidence(tesserocr.RIL.SYMBOL) >= self.ocr_threshold else "1" 
-    #                 for w in tesserocr.iterate_level(api.GetIterator(), tesserocr.RIL.SYMBOL)
-    #             ]
-    #             # identify the skipped blank spaces via the word list, add a 0 in
-    #             cumulative_word_len = 0
-    #             for word in text_words[:-1]:
-    #                 cumulative_word_len += len(word)
-    #             # insert a 0 into list of OCR confidence scores where blank spots should be
-    #                 confidence_scores.insert (cumulative_word_len, "0")
-    #                 cumulative_word_len += 1
-
-    #                 # join scores together as a single string
-    #                 confidence_scores = "".join(confidence_scores)
-    #         else:
-    #             confidence_scores = None
-
-    #         # remove set image from memory
-    #         api.Clear()
-
-    #         # join list of words together as one string and return with confider
-    #         text_words = " ".join(text_words)
-    #         if return_confidence:
-    #             return text_words, confidence_scores 
-    #         else:
-    #             return text_words
-        
     def pil_page_to_text(self, page, return_confidence=True):
         full_text = ""
         ocr_confidences = []
@@ -160,8 +105,7 @@ class OCRProcessor:
                     conf = iter.Confidence(level)
 
                     if word and not word.isspace():  # Check if the word is not just space
-                        # spacy_token = self.nlp(word.strip())
-                        adjusted_conf = '0' if conf > 85 else '1'  # High confidence if any token is alpha
+                        adjusted_conf = '0' if conf > 85 else '1' 
                         full_text += word + ' '
                         ocr_confidences.extend([adjusted_conf] * len(word.strip()))
                     else:
@@ -187,23 +131,53 @@ class OCRProcessor:
 
     def execute_ocr_process(self, pdf_bytes):
         try:
-            images = self.pdf_to_images(pdf_bytes)
             combined_text = ""
             combined_ocr_confidences = ""
+            page_counter = 0  # Introduce a counter to track the number of pages processed
 
-            for index, image in enumerate(images):
-                print(f"Processing page {index + 1} of {len(images)}...")
+            for image in self.pdf_to_images(pdf_bytes):
+                print(f"Processing page {page_counter + 1}...")
                 corrected_image = self.correct_image_alignment(image)
                 full_text, ocr_confidences = self.pil_page_to_text(corrected_image, return_confidence=True)
-                combined_text += full_text + " "  # Add space between text of different images
-                if (index + 1) < len(images):
-                    combined_ocr_confidences += ocr_confidences + '0'  # Add space in confidence string between pages
-                else:
-                    combined_ocr_confidences += ocr_confidences
+                combined_text += full_text + " "  # Add space between text of different pages
+                combined_ocr_confidences += ocr_confidences  # Add current page's OCR confidences
+                
+                page_counter += 1  # Increment page counter after processing a page
+
+                # We add a '0' after each page's confidences, but this may need adjustment based on how you want to handle the final page
+                combined_ocr_confidences += '0'  # Adding '0' after each page's confidences
+
+            # If you want to remove the last '0' added (in case you added one too many), you can uncomment the following line:
+            # if combined_ocr_confidences.endswith('0'):
+                combined_ocr_confidences = combined_ocr_confidences[:-1]  # Remove the last character
+
             return {"text": combined_text.strip(), "ocr_conf": combined_ocr_confidences.strip()}
         except Exception as e:
             print(f"Error executing OCR process: {e}")
             return {"text": "", "ocr_conf": ""}
+
+        
+    # def execute_ocr_process(self, pdf_bytes):
+    #     try:
+    #         images = self.pdf_to_images(pdf_bytes)
+    #         combined_text = ""
+    #         combined_ocr_confidences = ""
+
+    #         for index, image in enumerate(images):
+    #             print(f"Processing page {index + 1} of {len(images)}...")
+                
+    #             # Correct the image alignment after preprocessing
+    #             corrected_image = self.correct_image_alignment(image)
+    #             full_text, ocr_confidences = self.pil_page_to_text(corrected_image, return_confidence=True)
+    #             combined_text += full_text + " "  # Add space between text of different images
+    #             if (index + 1) < len(images):
+    #                 combined_ocr_confidences += ocr_confidences + '0'  # Add space in confidence string between pages
+    #             else:
+    #                 combined_ocr_confidences += ocr_confidences
+    #         return {"text": combined_text.strip(), "ocr_conf": combined_ocr_confidences.strip()}
+    #     except Exception as e:
+    #         print(f"Error executing OCR process: {e}")
+    #         return {"text": "", "ocr_conf": ""}
 
 # Example usage
 if __name__ == "__main__":
@@ -217,15 +191,3 @@ if __name__ == "__main__":
             print(f"Text length: {len(ocr_data['text'])}, OCR Confidence length: {len(ocr_data['ocr_conf'])}")
     except Exception as e:
         print(f"An error occurred while processing the file: {e}")
-
-
-
-
-"""
-tesserocr==2.6.2
-spacy==3.7.4
-numpy==1.26.4
-pdf2image==1.17.0
-Pillow==10.2.0
-opencv-python-headless==4.9.0.80
-"""
