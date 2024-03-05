@@ -19,14 +19,17 @@ thread.start()
 time.sleep(60)  # Simulate long-running OCR process
 
 
-def get_memory_limit():
+def get_memory_limit_in_mb():
     """
-    Returns the memory limit assigned to the container in bytes,
+    Returns the memory limit assigned to the container in megabytes,
     or None if not running in a container or limit is not set.
     """
     try:
         with open('/sys/fs/cgroup/memory/memory.limit_in_bytes', 'r') as file:
-            return int(file.read().strip())
+            # Convert from bytes to MB
+            memory_limit_bytes = int(file.read().strip())
+            memory_limit_mb = memory_limit_bytes / (1024 * 1024)
+            return memory_limit_mb
     except Exception as e:
         print(f"An error occurred: {e}")
         return None
