@@ -12,37 +12,24 @@ import fitz
 class OCRProcessor:
     def __init__(self, ocr_threshold = 90):
         self.ocr_threshold = ocr_threshold
-
-    # def pdf_to_images(self, pdf_bytes):
-    #     try:
-    #         # Converts PDF byte stream to a list of images
-    #         images = convert_from_bytes(pdf_bytes)
-    #         print(f"Successfully converted PDF to {len(images)} images.")
-    #         return images
-    #     except Exception as e:
-    #         print(f"Error converting PDF to images: {e}")
-    #         return []
         
     def pdf_to_images(self, pdf_bytes):
         with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_pdf:
             temp_pdf.write(pdf_bytes)
-            temp_pdf.seek(0)  # Go to the start of the file
-            # Ensure the file is written and accessible
+            temp_pdf.seek(0)
             temp_pdf.flush()
             os.fsync(temp_pdf.fileno())
 
-            # Open the temporary PDF to determine the number of pages
             doc = fitz.open(temp_pdf.name)
             num_pages = doc.page_count
-            doc.close()  # Close the PDF as it's no longer needed open
+            doc.close()
 
-            # Convert and yield each page as an image
-            for page_number in range(1, num_pages + 1):  # Page numbers start from 1
-                page_images = convert_from_path(temp_pdf.name, first_page=page_number, last_page=page_number, dpi=200, thread_count=1)
-                if page_images:  # Check if the list is not empty
-                    yield page_images[0]  # Yield the first (and only) image from the list
+            for page_number in range(1, num_pages + 1):
+                page_images = convert_from_path(temp_pdf.name, first_page=page_number, last_page=page_number, dpi=150, thread_count=1)
+                if page_images:
+                    print(f"Yielding image for page {page_number}")
+                    yield page_images[0]
 
-            # Remove the temporary file after processing
             os.remove(temp_pdf.name)
 
     @staticmethod
@@ -133,51 +120,17 @@ class OCRProcessor:
         try:
             combined_text = ""
             combined_ocr_confidences = ""
-            page_counter = 0  # Introduce a counter to track the number of pages processed
-
-            for (image, index) in enumerate(self.pdf_to_images(pdf_bytes)):
-                print(f"Processing page {page_counter + 1}...")
+            for index, image in enumerate(self.pdf_to_images(pdf_bytes)):
+                print(f"Processing OCR for page {index + 1}...")
                 corrected_image = self.correct_image_alignment(image)
                 full_text, ocr_confidences = self.pil_page_to_text(corrected_image, return_confidence=True)
-                combined_text += full_text + " "  # Add space between text of different pages
-                combined_ocr_confidences += ocr_confidences  # Add current page's OCR confidences
-                
-                page_counter += 1  # Increment page counter after processing a page
-
-                # We add a '0' after each page's confidences, but this may need adjustment based on how you want to handle the final page
-                combined_ocr_confidences += '0'  # Adding '0' after each page's confidences
-
-            # If you want to remove the last '0' added (in case you added one too many), you can uncomment the following line:
-            # if combined_ocr_confidences.endswith('0'):
-                combined_ocr_confidences = combined_ocr_confidences[:-1]  # Remove the last character
+                combined_text += full_text + " "
+                combined_ocr_confidences += ocr_confidences
 
             return {"text": combined_text.strip(), "ocr_conf": combined_ocr_confidences.strip()}
         except Exception as e:
             print(f"Error executing OCR process: {e}")
             return {"text": "", "ocr_conf": ""}
-
-        
-    # def execute_ocr_process(self, pdf_bytes):
-    #     try:
-    #         images = self.pdf_to_images(pdf_bytes)
-    #         combined_text = ""
-    #         combined_ocr_confidences = ""
-
-    #         for index, image in enumerate(images):
-    #             print(f"Processing page {index + 1} of {len(images)}...")
-                
-    #             # Correct the image alignment after preprocessing
-    #             corrected_image = self.correct_image_alignment(image)
-    #             full_text, ocr_confidences = self.pil_page_to_text(corrected_image, return_confidence=True)
-    #             combined_text += full_text + " "  # Add space between text of different images
-    #             if (index + 1) < len(images):
-    #                 combined_ocr_confidences += ocr_confidences + '0'  # Add space in confidence string between pages
-    #             else:
-    #                 combined_ocr_confidences += ocr_confidences
-    #         return {"text": combined_text.strip(), "ocr_conf": combined_ocr_confidences.strip()}
-    #     except Exception as e:
-    #         print(f"Error executing OCR process: {e}")
-    #         return {"text": "", "ocr_conf": ""}
 
 # Example usage
 if __name__ == "__main__":
