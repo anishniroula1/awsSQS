@@ -26,3 +26,22 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+"""
+
+<Configuration>
+    <Appenders>
+        <Console name="ConsoleAppender">
+            <PatternLayout pattern="%d{HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n"/>
+            <Filters>
+                <RegexFilter regex=".*duplicate key value violates unique constraint.*" onMatch="DENY" onMismatch="NEUTRAL"/>
+            </Filters>
+        </Console>
+    </Appenders>
+    <Loggers>
+        <Root level="DEBUG">
+            <AppenderRef ref="ConsoleAppender"/>
+        </Root>
+    </Loggers>
+</Configuration>
+"""
