@@ -28,19 +28,17 @@ if __name__ == "__main__":
     main()
 
 """
-
-<Configuration>
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="WARN">
     <Appenders>
-        <Console name="ConsoleAppender">
-            <PatternLayout pattern="%d{HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n"/>
-            <Filters>
-                <RegexFilter regex=".*duplicate key value violates unique constraint.*" onMatch="DENY" onMismatch="NEUTRAL"/>
-            </Filters>
+        <Console name="Console" target="SYSTEM_OUT">
+            <PatternLayout pattern="%d{yyyy-MM-dd HH:mm:ss} %-5p %c{1}:%L - %m%n"/>
         </Console>
     </Appenders>
     <Loggers>
-        <Root level="DEBUG">
-            <AppenderRef ref="ConsoleAppender"/>
+        <Logger name="org.hibernate.engine.jdbc.spi.SqlExceptionHelper" level="WARN"/>
+        <Root level="INFO">
+            <AppenderRef ref="Console"/>
         </Root>
     </Loggers>
 </Configuration>
