@@ -37,14 +37,8 @@ class OCRProcessor:
         try:
             (h, w) = image.shape[:2]
             center = (w // 2, h // 2)
-
-            # Correct angle for full circle rotations and mirror flips
-            if angle == 90 or angle == -270:
-                angle = -90  # Rotate left
-            elif angle == -90 or angle == 270:
-                angle = 90  # Rotate right
-            elif angle <= -180 or angle >= 180:
-                angle += 180  # Upside down
+            if -90 < angle < -45:
+                angle += 90  # Adjusting angle for proper rotation
 
             two_d_matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
             cos = np.abs(two_d_matrix[0, 0])
@@ -71,11 +65,9 @@ class OCRProcessor:
             angle = cv2.minAreaRect(coords)[-1]
 
             if angle < -45:
-                angle = -(90 + angle)  # Correcting the angle for proper rotation
-            elif angle > 45:
-                angle = 90 - angle  # Adjusting when the image is upside down
+                angle = -(90 + angle)
             else:
-                angle = -angle  # Normal correction
+                angle = -angle
 
             corrected_image_pil = Image.fromarray(cv2.cvtColor(self.rotate_image(open_cv_image, angle), cv2.COLOR_BGR2RGB))
             print("Corrected image alignment.")
@@ -83,8 +75,7 @@ class OCRProcessor:
         except Exception as e:
             print(f"Error correcting image alignment: {e}")
             return Image.fromarray(open_cv_image)  # Return original image if correction fails
-
-            
+        
     def pil_page_to_text(self, page, return_confidence=True):
         full_text = ""
         ocr_confidences = []
