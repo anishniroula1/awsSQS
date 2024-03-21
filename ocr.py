@@ -37,8 +37,6 @@ class OCRProcessor:
         try:
             (h, w) = image.shape[:2]
             center = (w // 2, h // 2)
-            if -90 < angle < -45:
-                angle += 90  # Adjusting angle for proper rotation
 
             two_d_matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
             cos = np.abs(two_d_matrix[0, 0])
@@ -64,10 +62,13 @@ class OCRProcessor:
             coords = np.column_stack(np.where(thresh > 0))
             angle = cv2.minAreaRect(coords)[-1]
 
+            # Correcting the angle
             if angle < -45:
-                angle = -(90 + angle)
+                angle = -(90 + angle)  # Correcting for angles between -45 and -90 degrees
+            elif angle > 45:
+                angle = 90 - angle  # Correcting for angles between 45 and 90 degrees
             else:
-                angle = -angle
+                angle = -angle  # Correcting for angles between -45 and 45 degrees
 
             corrected_image_pil = Image.fromarray(cv2.cvtColor(self.rotate_image(open_cv_image, angle), cv2.COLOR_BGR2RGB))
             print("Corrected image alignment.")
