@@ -37,6 +37,8 @@ class OCRProcessor:
         try:
             (h, w) = image.shape[:2]
             center = (w // 2, h // 2)
+            if -90 < angle < -45:
+                angle += 90  # Adjusting angle for proper rotation
 
             two_d_matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
             cos = np.abs(two_d_matrix[0, 0])
