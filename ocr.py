@@ -32,11 +32,15 @@ class OCRProcessor:
 
             os.remove(temp_pdf.name)
 
-    @staticmethod
     def rotate_image(image, angle):
         try:
             (h, w) = image.shape[:2]
             center = (w // 2, h // 2)
+            # Adjust angles to ensure proper rotation
+            if angle == -90 or angle == 270:  # Upside-down
+                angle += 180
+            elif angle == -0.0 or angle == -360:  # Correcting near-zero or full rotation angles to no rotation
+                angle = 0
 
             two_d_matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
             cos = np.abs(two_d_matrix[0, 0])
@@ -62,13 +66,12 @@ class OCRProcessor:
             coords = np.column_stack(np.where(thresh > 0))
             angle = cv2.minAreaRect(coords)[-1]
 
-            # Correcting the angle
             if angle < -45:
-                angle = -(90 + angle)  # Correcting for angles between -45 and -90 degrees
+                angle = -(90 + angle)  # Correcting the angle for proper rotation
             elif angle > 45:
-                angle = 90 - angle  # Correcting for angles between 45 and 90 degrees
+                angle = 90 - angle  # Adjusting when the image is upside down
             else:
-                angle = -angle  # Correcting for angles between -45 and 45 degrees
+                angle = -angle  # Normal correction
 
             corrected_image_pil = Image.fromarray(cv2.cvtColor(self.rotate_image(open_cv_image, angle), cv2.COLOR_BGR2RGB))
             print("Corrected image alignment.")
@@ -76,7 +79,7 @@ class OCRProcessor:
         except Exception as e:
             print(f"Error correcting image alignment: {e}")
             return Image.fromarray(open_cv_image)  # Return original image if correction fails
-        
+            
     def pil_page_to_text(self, page, return_confidence=True):
         full_text = ""
         ocr_confidences = []
