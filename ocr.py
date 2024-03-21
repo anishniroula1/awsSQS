@@ -66,12 +66,13 @@ class OCRProcessor:
             coords = np.column_stack(np.where(thresh > 0))
             angle = cv2.minAreaRect(coords)[-1]
 
+            # Correcting the angle based on its quadrant
             if angle < -45:
-                angle = -(90 + angle)  # Correcting the angle for proper rotation
+                angle = -(90 + angle)  # Angle is in quadrant 2 (top-left to bottom-right)
             elif angle > 45:
-                angle = 90 - angle  # Adjusting when the image is upside down
+                angle = 90 - angle  # Angle is in quadrant 3 (bottom-right to top-left, upside down)
             else:
-                angle = -angle  # Normal correction
+                angle = -angle  # Angle is in quadrant 1 (top-right to bottom-left) or quadrant 4 (bottom-left to top-right)
 
             corrected_image_pil = Image.fromarray(cv2.cvtColor(self.rotate_image(open_cv_image, angle), cv2.COLOR_BGR2RGB))
             print("Corrected image alignment.")
