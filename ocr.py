@@ -37,8 +37,6 @@ class OCRProcessor:
         try:
             (h, w) = image.shape[:2]
             center = (w // 2, h // 2)
-            if -90 < angle < -45:
-                angle += 90  # Adjusting angle for proper rotation
 
             two_d_matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
             cos = np.abs(two_d_matrix[0, 0])
@@ -56,25 +54,31 @@ class OCRProcessor:
             print(f"Error rotating image: {e}")
             return image  # Return original image if rotation fails
 
+    def get_image_orientation(self, image):
+        try:
+            with PyTessBaseAPI(psm=PSM.OSD_ONLY) as api:
+                api.SetImage(image)
+                osd = api.DetectOrientationScript()
+                rotation_angle = osd['rotate'] if 'rotate' in osd else 0
+                return rotation_angle
+        except Exception as e:
+            print(f"Error detecting image orientation: {e}")
+            return 0  # Assume no rotation is needed if detection fails
+
     def correct_image_alignment(self, image):
         try:
             open_cv_image = np.array(image)
-            gray = cv2.cvtColor(open_cv_image, cv2.COLOR_BGR2GRAY)
-            _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-            coords = np.column_stack(np.where(thresh > 0))
-            angle = cv2.minAreaRect(coords)[-1]
-
-            if angle < -45:
-                angle = -(90 + angle)
-            else:
-                angle = -angle
-
-            corrected_image_pil = Image.fromarray(cv2.cvtColor(self.rotate_image(open_cv_image, angle), cv2.COLOR_BGR2RGB))
-            print("Corrected image alignment.")
+            
+            # Detect the orientation of the image
+            rotation_needed = self.get_image_orientation(open_cv_image)
+            
+            # Rotate the image based on the detected orientation
+            corrected_image_pil = Image.fromarray(self.rotate_image(open_cv_image, rotation_needed), cv2.COLOR_BGR2RGB)
+            print("Corrected image alignment based on text orientation.")
             return corrected_image_pil
         except Exception as e:
             print(f"Error correcting image alignment: {e}")
-            return Image.fromarray(open_cv_image)  # Return original image if correction fails
+            return image  # Return original image if correction fails
         
     def pil_page_to_text(self, page, return_confidence=True):
         full_text = ""
