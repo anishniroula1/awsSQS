@@ -10,6 +10,10 @@ from tesserocr import PyTessBaseAPI, PSM, RIL
 import fitz
 
 class OCRProcessor:
+    """
+    This class is responsible for the Optical Character Recognition (OCR) processing of images.
+    It includes functionality for correcting image alignment and converting images to text.
+    """
     def __init__(self, ocr_threshold = 90):
         self.ocr_threshold = ocr_threshold
         
@@ -34,6 +38,15 @@ class OCRProcessor:
 
     @staticmethod
     def rotate_image(image):
+        """
+        Rotates an image to correct its orientation based on the detected text orientation.
+
+        Parameters:
+            image (numpy.ndarray): The image to be rotated.
+
+        Returns:
+            numpy.ndarray: The rotated image.
+        """
         try:
             (h, w) = image.shape[:2]
             center = (w // 2, h // 2)
@@ -55,6 +68,15 @@ class OCRProcessor:
             return image  # Return original image if rotation fails
 
     def correct_image_alignment(self, image):
+        """
+        Corrects the alignment of the provided image based on its detected text orientation.
+
+        Parameters:
+            image (PIL.Image.Image): The image to be corrected.
+
+        Returns:
+            PIL.Image.Image: The corrected image.
+        """
         try:
             open_cv_image = np.array(image)
             gray = cv2.cvtColor(open_cv_image, cv2.COLOR_BGR2GRAY)
@@ -83,6 +105,16 @@ class OCRProcessor:
 
         
     def pil_page_to_text(self, page, return_confidence=True):
+        """
+        Converts a page image to text using OCR, optionally returning confidence levels for the recognized text.
+
+        Parameters:
+            page (PIL.Image.Image): The page image to convert.
+            return_confidence (bool): If true, returns confidence scores along with the text. Default is True.
+
+        Returns:
+            tuple: A tuple containing the OCR-converted text and a string representing confidence scores for each character.
+        """
         full_text = ""
         ocr_confidences = []
 
@@ -123,6 +155,15 @@ class OCRProcessor:
             return full_text.strip(), ''.join(ocr_confidences).strip()  # Return what was processed before error
 
     def execute_ocr_process(self, pdf_bytes):
+        """
+        Executes the OCR process on a sequence of images, converting them to text.
+
+        Parameters:
+            images (iterator): An iterator yielding images for OCR processing.
+
+        Returns:
+            dict: A dictionary containing the combined text from all processed images and the corresponding OCR confidence scores.
+        """
         try:
             combined_text = ""
             combined_ocr_confidences = ""
