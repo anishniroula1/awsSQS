@@ -33,14 +33,12 @@ class OCRProcessor:
             os.remove(temp_pdf.name)
 
     @staticmethod
-    def rotate_image(image, angle):
+    def rotate_image(image):
         try:
             (h, w) = image.shape[:2]
             center = (w // 2, h // 2)
-            if -90 < angle < -45:
-                angle += 90  # Adjusting angle for proper rotation
 
-            two_d_matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
+            two_d_matrix = cv2.getRotationMatrix2D(center, 0, 1.0)
             cos = np.abs(two_d_matrix[0, 0])
             sin = np.abs(two_d_matrix[0, 1])
 
@@ -56,54 +54,32 @@ class OCRProcessor:
             print(f"Error rotating image: {e}")
             return image  # Return original image if rotation fails
 
-    def get_image_orientation(self, image):
-        try:
-            with PyTessBaseAPI(psm=PSM.OSD_ONLY) as api:
-                api.SetImage(image)
-                osd = api.DetectOrientationScript()
-                rotation_angle = osd['rotate'] if 'rotate' in osd else 0
-                return rotation_angle
-        except Exception as e:
-            print(f"Error detecting image orientation: {e}")
-            return 0  # Assume no rotation is needed if detection fails
-
     def correct_image_alignment(self, image):
         try:
-            # Convert PIL image to OpenCV format
-            open_cv_image = np.array(image.convert('RGB'))[:, :, ::-1].copy()
-            # Convert image to grayscale
+            open_cv_image = np.array(image)
             gray = cv2.cvtColor(open_cv_image, cv2.COLOR_BGR2GRAY)
-            # Threshold to get just the signature (assuming white background)
-            _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-            # Find the coordinates of non-zero points (text)
-            coords = np.column_stack(np.where(thresh > 0))
-            # Find the angle of text lines
-            angle = cv2.minAreaRect(coords)[-1]
 
-            # Initialize the angle of correction
-            correction_angle = 0
-
-            # Determine the rotation needed based on the angle
-            if angle < -45:
-                correction_angle = -(90 + angle)  # Angle is in [-90, -45]
-            elif angle > 45:
-                correction_angle = 90 - angle     # Angle is in [45, 90]
-            elif -45 <= angle <= 45:
-                correction_angle = -angle         # Angle is in [-45, 45], typical case
-
-            # Perform the rotation if necessary
-            if correction_angle != 0:
-                corrected_image = self.rotate_image(open_cv_image, correction_angle)
-                corrected_image_pil = Image.fromarray(cv2.cvtColor(corrected_image, cv2.COLOR_BGR2RGB))
-                print("Corrected image alignment.")
-            else:
-                corrected_image_pil = Image.fromarray(cv2.cvtColor(open_cv_image, cv2.COLOR_BGR2RGB))
-                print("Image is already correctly aligned.")
-
+            # Using TesserOCR to find orientation
+            with PyTessBaseAPI(psm=PSM.AUTO_OSD, path="/usr/share/tesseract-ocr/5/tessdata") as api:
+                api.SetImage(Image.fromarray(gray))
+                it = api.AnalyseLayout()
+                orientation, direction, order, deskew_angle = it.Orientation()
+                print("Orientation: {:d}".format(orientation))
+                print("WritingDirection: {:d}".format(direction))
+                print("TextlineOrder: {:d}".format(order))
+                print("Deskew angle: {:.4f}".format(deskew_angle))
+                angle = orientation
+                if angle and angle != 0:
+                    # Rotate image with updated angle
+                    corrected_image_pil = Image.fromarray(self.rotate_image(open_cv_image))
+                else:
+                    corrected_image_pil = Image.fromarray(open_cv_image)
+            
+            print("Corrected image alignment.")
             return corrected_image_pil
         except Exception as e:
             print(f"Error correcting image alignment: {e}")
-            return Image.fromarray(open_cv_image)  # Return original image if correction fails
+            return Image.fromarray(open_cv_image)  # Return original if correction fails
 
         
     def pil_page_to_text(self, page, return_confidence=True):
@@ -111,7 +87,7 @@ class OCRProcessor:
         ocr_confidences = []
 
         try:
-            with PyTessBaseAPI(psm=PSM.AUTO, path="/usr/share/tesseract-ocr/5/tessdata") as api:
+            with PyTessBaseAPI(psm=PSM.AUTO_OSD, path="/usr/share/tesseract-ocr/5/tessdata") as api:
                 api.SetImage(page)
                 api.Recognize()
                 iter = api.GetIterator()
@@ -165,7 +141,7 @@ class OCRProcessor:
 # Example usage
 if __name__ == "__main__":
     try:
-        with open("./test0.pdf", "rb") as file:
+        with open("./test1.pdf", "rb") as file:
             print("Starting OCR process...")
             pdf_bytes = file.read()
             ocr_processor = OCRProcessor()
