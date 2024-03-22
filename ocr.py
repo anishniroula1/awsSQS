@@ -18,6 +18,15 @@ class OCRProcessor:
         self.ocr_threshold = ocr_threshold
         
     def pdf_to_images(self, pdf_bytes):
+        """
+        Converts a PDF file to a series of images, one for each page.
+        
+        Parameters:
+            pdf_bytes (bytes): The PDF file content in bytes.
+        
+        Yields:
+            PIL.Image: An image for each page of the PDF.
+        """
         with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_pdf:
             temp_pdf.write(pdf_bytes)
             temp_pdf.seek(0)
