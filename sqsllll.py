@@ -20,3 +20,10 @@ FROM
     filtered_sections
 GROUP BY
     a_number;
+
+def filter_sections_like(patterns):
+    # Handles pattern matching
+    conditions = [Text_Similarity_Input.section_name.like(pattern) for pattern in patterns]
+    return case([
+        (or_(*conditions), Sentences.match_count)
+    ], else_=0)
