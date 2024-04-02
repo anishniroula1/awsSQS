@@ -2,7 +2,7 @@ WITH filtered_sections AS (
     SELECT
         s.a_number,
         CASE
-            WHEN tsi.section_name IN ('supp_b', 'supp_b_%') THEN s.match_count
+            WHEN tsi.section_name = 'supp_b' OR tsi.section_name LIKE 'supp_b_%' THEN s.match_count
             ELSE NULL
         END AS match_count_supplement_b
     FROM
