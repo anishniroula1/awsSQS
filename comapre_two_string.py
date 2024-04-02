@@ -18,7 +18,7 @@ def compare_strings(str1, str2):
     
     # Check if the similarity is at least 98.5%
     if similarity_ratio >= 98:
-        return 98.5
+        return similarity_ratio
     else:
         return 0.0
 
