@@ -2,6 +2,7 @@ from sqlalchemy import create_engine, inspect
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
 
+
 class DBConnection:
     def __init__(self, db_url):
         # Create the engine
@@ -49,7 +50,9 @@ class DBConnection:
         :return: Result of the insert operation if return_result is True, else None.
         """
         try:
-            self.session.bulk_insert_mappings(table, records, return_defaults=return_result)
+            self.session.bulk_insert_mappings(
+                table, records, return_defaults=return_result
+            )
             self.session.commit()
             if return_result:
                 return records
@@ -95,7 +98,9 @@ class DBConnection:
             update_dict = {key: record[key] for key in columns if key in record}
 
             # Update the record
-            self.session.query(table).filter(getattr(table, primary_key) == primary_key_value).update(update_dict)
+            self.session.query(table).filter(
+                getattr(table, primary_key) == primary_key_value
+            ).update(update_dict)
             self.session.commit()
         except Exception as e:
             self.session.rollback()
@@ -106,6 +111,7 @@ class DBConnection:
         self.session.close()
         self.connection.close()
         self.cursor.close()
+
 
 # You can then create a Base class for your models
 Base = declarative_base()

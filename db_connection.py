@@ -2,6 +2,7 @@ from completed.users import Base, User
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+
 class DBConnection:
     def __init__(self, db_url):
         self.engine = create_engine(db_url)

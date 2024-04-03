@@ -1,10 +1,12 @@
 from concurrent.futures import ThreadPoolExecutor
 
+
 # Define a function that you want to run in parallel
 def task(n):
     # Your task logic here
     print(f"Executing task {n}")
     return n * 2  # Example operation
+
 
 # Number of tasks you want to run in parallel
 tasks = [1, 2, 3, 4, 5, 6]

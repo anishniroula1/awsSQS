@@ -3,6 +3,7 @@ import inspect
 import os
 import threading
 
+
 class CustomLogger:
     # Thread-local storage for unique message identifiers
     thread_context = threading.local()
@@ -12,7 +13,7 @@ class CustomLogger:
         self.internal_logger.setLevel(level)
         if not self.internal_logger.handlers:
             ch = logging.StreamHandler()
-            formatter = logging.Formatter('%(asctime)-10s %(message)s')
+            formatter = logging.Formatter("%(asctime)-10s %(message)s")
             ch.setFormatter(formatter)
             self.internal_logger.addHandler(ch)
 
@@ -22,15 +23,19 @@ class CustomLogger:
 
     @classmethod
     def get_thread_message(cls):
-        return getattr(cls.thread_context, 'unique_message', "")
+        return getattr(cls.thread_context, "unique_message", "")
 
     def _find_caller(self):
         frame = inspect.currentframe()
         if frame is not None:
-            frame = frame.f_back.f_back  # Adjust this line to correctly skip the unnecessary frames
+            frame = (
+                frame.f_back.f_back
+            )  # Adjust this line to correctly skip the unnecessary frames
         while frame:
             frame_info = inspect.getframeinfo(frame)
-            filename = os.path.basename(frame_info.filename)  # Use os.path.basename to get just the filename
+            filename = os.path.basename(
+                frame_info.filename
+            )  # Use os.path.basename to get just the filename
             if "logging" not in filename and filename != os.path.basename(__file__):
                 return filename, frame_info.lineno
             frame = frame.f_back

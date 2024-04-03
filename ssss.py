@@ -32,14 +32,14 @@
 # Assuming key_to_question and responses are defined as before
 
 key_to_question = {
-    'name': 'What is your name?',
-    'place': 'Where you from?',
+    "name": "What is your name?",
+    "place": "Where you from?",
 }
 
 responses = [
-    {"question": 'What is your name?', 'explanation': "my name is Jon"}, 
+    {"question": "What is your name?", "explanation": "my name is Jon"},
     # {"question": 'Where you from?', 'explanation': "I'm from China"},
-    {"question": 'Where you going?', 'explanation': "I'm from China"}
+    {"question": "Where you going?", "explanation": "I'm from China"},
 ]
 
 # Initialize an empty list to store the results
@@ -51,7 +51,7 @@ responses = [
 #         if question == response["question"]:
 #             # Map the key to the response
 #             res = {
-#                 "section_name": key, 
+#                 "section_name": key,
 #                 "content": response.get('explanation')
 #             }
 #             # Append the res dictionary to listx

@@ -8,11 +8,15 @@ class MyClass:
     def get_value(self):
         return self.value
 
+
 my_object = MyClass()
+
+
 def modify_object(new_value):
-    x = {'value': new_value}
+    x = {"value": new_value}
     my_object = MyClass(x)
     print(my_object.get_value())
+
 
 modify_object("Hello, World!")
 

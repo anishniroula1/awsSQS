@@ -6,11 +6,13 @@ from pdf2image import convert_from_bytes, convert_from_path
 from PIL import Image
 import fitz
 
+
 class ImageProcessing:
     """
     This class handles operations related to image manipulation, including converting
     PDF pages to images and rotating images to correct their orientation.
     """
+
     @staticmethod
     def pdf_to_images(pdf_bytes):
         """
@@ -22,7 +24,7 @@ class ImageProcessing:
         Yields:
             PIL.Image: An image for each page of the PDF.
         """
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_pdf:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_pdf:
             temp_pdf.write(pdf_bytes)
             temp_pdf.seek(0)
             temp_pdf.flush()
@@ -33,7 +35,13 @@ class ImageProcessing:
             doc.close()
 
             for page_number in range(1, num_pages + 1):
-                page_images = convert_from_path(temp_pdf.name, first_page=page_number, last_page=page_number, dpi=150, thread_count=1)
+                page_images = convert_from_path(
+                    temp_pdf.name,
+                    first_page=page_number,
+                    last_page=page_number,
+                    dpi=150,
+                    thread_count=1,
+                )
                 if page_images:
                     print(f"Yielding image for page {page_number}")
                     yield page_images[0]
@@ -66,7 +74,13 @@ class ImageProcessing:
             two_d_matrix[0, 2] += (new_w // 2) - center[0]
             two_d_matrix[1, 2] += (new_h // 2) - center[1]
 
-            rotated_image = cv2.warpAffine(image, two_d_matrix, (new_w, new_h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+            rotated_image = cv2.warpAffine(
+                image,
+                two_d_matrix,
+                (new_w, new_h),
+                flags=cv2.INTER_CUBIC,
+                borderMode=cv2.BORDER_REPLICATE,
+            )
             return rotated_image
         except Exception as e:
             print(f"Error rotating image: {e}")

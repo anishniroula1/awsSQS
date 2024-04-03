@@ -8,8 +8,10 @@ def remove_keys_from_dict(original_dict, keys_to_remove):
     """
     # Create a copy of the dictionary to avoid changing the original one
     filtered_dict = original_dict.copy()
-    
+
     for key in keys_to_remove:
-        filtered_dict.pop(key, None)  # Use pop to avoid KeyError if the key is not found
-    
+        filtered_dict.pop(
+            key, None
+        )  # Use pop to avoid KeyError if the key is not found
+
     return filtered_dict

@@ -234,16 +234,18 @@ message_to_send = """{
 }"""
 
 # Initialize a session using Amazon SQS
-sqs = boto3.client('sqs')
+sqs = boto3.client("sqs")
+
 
 def create_queue(queue_name):
     try:
         response = sqs.create_queue(QueueName=queue_name)
         print(f'Queue URL: {response["QueueUrl"]}')
-        return response['QueueUrl']
+        return response["QueueUrl"]
     except ClientError as e:
-        print(f'An error occurred: {e}')
+        print(f"An error occurred: {e}")
         return None
+
 
 def send_message(queue_url, message):
     try:
@@ -251,18 +253,19 @@ def send_message(queue_url, message):
             QueueUrl=queue_url,
             MessageBody=message,
             MessageAttributes={
-                'Attribute1': {'StringValue': 'Value1', 'DataType': 'String'},
-                'Attribute2': {'StringValue': 'Value2', 'DataType': 'String'},
-            }
+                "Attribute1": {"StringValue": "Value1", "DataType": "String"},
+                "Attribute2": {"StringValue": "Value2", "DataType": "String"},
+            },
         )
         print(f'Message ID: {response["MessageId"]}')
     except ClientError as e:
-        print(f'An error occurred: {e}')
+        print(f"An error occurred: {e}")
 
-if __name__ == '__main__':
-    queue_name = 'first'
+
+if __name__ == "__main__":
+    queue_name = "first"
     queue_url = create_queue(queue_name)
     print(queue_url)
     if queue_url:
-        message = 'Hello, World!'
+        message = "Hello, World!"
         send_message(queue_url, message_to_send)

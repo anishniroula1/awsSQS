@@ -12,7 +12,7 @@ json_data = [
     {"Name": "Bruce Wayne", "Age": 35, "City": "Gotham"},
     {"Name": "Clark Kent", "Age": 36, "City": "Metropolis"},
     {"Name": "Diana Prince", "Age": 32, "City": "Themyscira"},
-    {"Name": "Barry Allen", "Age": 28, "City": "Central City"}
+    {"Name": "Barry Allen", "Age": 28, "City": "Central City"},
 ]
 
 # Convert JSON to a DataFrame

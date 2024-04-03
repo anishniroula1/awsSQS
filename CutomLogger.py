@@ -2,6 +2,7 @@ import logging
 import inspect
 import os
 
+
 class CustomLogger:
     DEFAULT_MESSAGE = os.getenv("LOGGER_VARIABLE", "")
 
@@ -10,7 +11,7 @@ class CustomLogger:
         self.internal_logger.setLevel(level)
         if not self.internal_logger.handlers:
             ch = logging.StreamHandler()
-            formatter = logging.Formatter('%(asctime)-10s %(message)s')
+            formatter = logging.Formatter("%(asctime)-10s %(message)s")
             ch.setFormatter(formatter)
             self.internal_logger.addHandler(ch)
 
@@ -21,10 +22,14 @@ class CustomLogger:
     def _find_caller(self):
         frame = inspect.currentframe()
         if frame is not None:
-            frame = frame.f_back.f_back  # Adjust this line to correctly skip the unnecessary frames
+            frame = (
+                frame.f_back.f_back
+            )  # Adjust this line to correctly skip the unnecessary frames
         while frame:
             frame_info = inspect.getframeinfo(frame)
-            filename = os.path.basename(frame_info.filename)  # Use os.path.basename to get just the filename
+            filename = os.path.basename(
+                frame_info.filename
+            )  # Use os.path.basename to get just the filename
             if "logging" not in filename and filename != os.path.basename(__file__):
                 return filename, frame_info.lineno
             frame = frame.f_back
@@ -53,6 +58,7 @@ class CustomLogger:
 
     def critical(self, message, *args, **kwargs):
         self._log(logging.CRITICAL, message, *args, **kwargs)
+
 
 # Example usage
 # if __name__ == "__main__":

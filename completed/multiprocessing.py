@@ -1,9 +1,11 @@
 import multiprocessing
 
+
 def square_number(n):
     """Function to square a number."""
     squared_value = n * n
     print(f"{n} squared is {squared_value}")
+
 
 def main():
     numbers = [1, 2, 3, 4, 5]  # Numbers to square
@@ -23,6 +25,7 @@ def main():
     # Wait for all processes to finish
     for process in processes:
         process.join()
+
 
 if __name__ == "__main__":
     main()
