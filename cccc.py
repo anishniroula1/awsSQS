@@ -1,9 +1,14 @@
-SELECT c.case_id, c.a_number, c.receipt_number
+SELECT 
+    c.case_id, 
+    c.a_number, 
+    c.receipt_number,
+    d.document_category
 FROM Case c
 INNER JOIN (
-    SELECT d.case_id
-    FROM Document d
-    GROUP BY d.case_id
-    HAVING COUNT(d.document_id) = 1
-) unique_cases ON c.case_id = unique_cases.case_id
-
+    SELECT 
+        case_id,
+        document_category
+    FROM Document
+    GROUP BY case_id, document_category
+    HAVING COUNT(document_id) = 1
+) d ON c.case_id = d.case_id
