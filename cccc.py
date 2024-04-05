@@ -1,19 +1,9 @@
-SELECT
-    d.document_id,
-    d.case_id,
-    c.a_number,
-    c.receipt_number
-FROM
-    document d
-INNER JOIN
-    (SELECT
-        document_id,
-        case_id
-    FROM
-        document
-    GROUP BY
-        document_id
-    HAVING
-        COUNT(DISTINCT case_id) = 1) AS filtered_docs ON d.document_id = filtered_docs.document_id
-INNER JOIN
-    case c ON d.case_id = c.case_id;
+SELECT c.case_id, c.a_number, c.receipt_number
+FROM Case c
+INNER JOIN (
+    SELECT d.case_id
+    FROM Document d
+    GROUP BY d.case_id
+    HAVING COUNT(d.document_id) = 1
+) unique_cases ON c.case_id = unique_cases.case_id
+
