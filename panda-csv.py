@@ -23,14 +23,14 @@ def process_csv(file_path):
         # Sort by date
         df = df.sort_values(by='date')
         
-        # Get unique student numbers
-        unique_student_numbers = df['student_number'].unique()
+        # Drop duplicates to keep the first occurrence (earliest date) for each student number
+        unique_students = df.drop_duplicates(subset=['student_number'], keep='first')
         
-        # Create a new DataFrame for the output
-        output_df = pd.DataFrame(unique_student_numbers, columns=['student_number'])
+        # Select relevant columns
+        output_df = unique_students[['student_number', 'date']]
         
         # Define output file path
-        output_file_path = os.path.join(os.path.dirname(file_path), 'unique_student_numbers.csv')
+        output_file_path = os.path.join(os.path.dirname(file_path), 'unique_student_numbers_with_dates.csv')
         
         # Write to a new CSV file
         output_df.to_csv(output_file_path, index=False)
