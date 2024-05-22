@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 from pdf2image import convert_from_bytes, convert_from_path
 from PIL import Image
-import fitz
+from PyPdf2 import PdfReader
 
 
 class ImageProcessing:
@@ -30,9 +30,9 @@ class ImageProcessing:
             temp_pdf.flush()
             os.fsync(temp_pdf.fileno())
 
-            doc = fitz.open(temp_pdf.name)
-            num_pages = doc.page_count
-            doc.close()
+            doc = PdfReader(temp_pdf.name)
+            pages = doc.pages
+            num_pages = len(pages)
 
             for page_number in range(1, num_pages + 1):
                 page_images = convert_from_path(
