@@ -1,0 +1,49 @@
+Our current document ingestion process involves two primary sources:
+
+Elis (Global)
+CMS
+Document Analysis Groups from Global
+From the Global source, we receive documents categorized into three analysis groups:
+
+Asylee
+Refugee
+Apso (New category)
+Document Analysis from CMS
+From CMS, we receive documents specific to the Asylee category.
+
+Document Ingestion Rules
+Global Asylee Documents
+Global asylee documents come from two different sources:
+
+Asylee
+Asylee Lockbox
+Asylee Rule
+For the Asylee category, the key documents we focus on are Written Statements. The ingestion process includes the following steps:
+
+During ingestion, any documents that are not Written Statements - English are ignored.
+If there are multiple Written Statements - English, we take the latest one based on the last modified date.
+Asylee Lockbox Rule
+For the Asylee Lockbox category, we receive multiple document types:
+
+generalSupport
+unmatchedDocuments
+i589
+Written Statements
+Part B
+The process for handling these documents is as follows:
+
+Part B information is extracted from a JSON object via an API (example.com).
+Written Statements - English and Supplement are identified from the other documents listed above.
+Each document is fetched from the S3 bucket, and the metadata is checked for Written Statements or I-589.
+If a document contains a Written Statement, it is saved.
+If a document contains I-589, the supplement is extracted and saved in our database.
+CMS Asylee Documents
+For CMS Asylee documents, the key documents we focus on are:
+
+I-589
+Written Statements or Written Statements - English
+The process includes:
+
+If there are multiple Written Statements or Written Statements - English, we prioritize the latest Written Statements - English based on the created date.
+Written Statements - English are always prioritized over Written Statements.
+We also process I-589 JSON documents. If there are no I-589 JSON documents, we do not proceed with that case.
