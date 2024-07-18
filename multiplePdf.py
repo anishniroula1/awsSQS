@@ -13,7 +13,6 @@ def combine_pdfs(pdf_bytes_list):
     combined_pdf = BytesIO()
     pdf_writer.write(combined_pdf)
     combined_pdf.seek(0)
-    breakpoint()
     return combined_pdf.getvalue()
 
 # Example usage:
