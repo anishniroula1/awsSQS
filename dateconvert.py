@@ -9,8 +9,14 @@ if date_time_str.endswith('+00'):
 elif date_time_str.endswith('-00'):
     date_time_str = date_time_str[:-3] + '-00:00'
 
-# Convert to Python datetime object
-date_time_obj = datetime.strptime(date_time_str, "%Y-%m-%d %H:%M:%S.%f%z")
+# Replace the space with 'T' to match the desired format
+date_time_str = date_time_str.replace(' ', 'T')
+
+# Parse the adjusted string into a datetime object
+date_time_obj = datetime.strptime(date_time_str, "%Y-%m-%dT%H:%M:%S.%f%z")
+
+# Convert the datetime object back to a string in the desired format
+formatted_date_time_str = date_time_obj.strftime("%Y-%m-%dT%H:%M:%S.%f%z")
 
 # Output the result
-print(date_time_obj)
+print(formatted_date_time_str)
