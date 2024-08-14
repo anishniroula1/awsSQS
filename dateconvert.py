@@ -1,22 +1,34 @@
 from datetime import datetime
 
-# Java LocalDateTime string
+def parse_datetime(date_time_str):
+    # Define possible datetime formats
+    formats = [
+        "%Y-%m-%d %H:%M:%S.%f%z",       # with milliseconds and timezone
+        "%Y-%m-%dT%H:%M:%S.%f%z",       # ISO format with milliseconds and timezone
+        "%Y-%m-%d %H:%M:%S.%f",         # with milliseconds, no timezone
+        "%Y-%m-%dT%H:%M:%S.%f",         # ISO format with milliseconds, no timezone
+        "%Y-%m-%d %H:%M:%S%z",          # without milliseconds, with timezone
+        "%Y-%m-%dT%H:%M:%S%z",          # ISO format without milliseconds, with timezone
+        "%Y-%m-%d %H:%M:%S",            # without milliseconds, no timezone
+        "%Y-%m-%dT%H:%M:%S"             # ISO format without milliseconds, no timezone
+    ]
+    
+    # Try each format until one works
+    for fmt in formats:
+        try:
+            return datetime.strptime(date_time_str, fmt)
+        except ValueError:
+            continue
+    
+    # If none of the formats worked
+    raise ValueError(f"Date format for '{date_time_str}' not recognized")
+
+# Example usage
 date_time_str = "2023-12-21 23:09:39.365+00"
+date_time_obj = parse_datetime(date_time_str)
+print(date_time_obj)
 
-# Adjust the timezone format to include the colon
-if date_time_str.endswith('+00'):
-    date_time_str = date_time_str[:-3] + '+00:00'
-elif date_time_str.endswith('-00'):
-    date_time_str = date_time_str[:-3] + '-00:00'
-
-# Replace the space with 'T' to match the desired format
-date_time_str = date_time_str.replace(' ', 'T')
-
-# Parse the adjusted string into a datetime object
-date_time_obj = datetime.strptime(date_time_str, "%Y-%m-%dT%H:%M:%S.%f%z")
-
-# Convert the datetime object back to a string in the desired format
+# Convert back to your desired format
 formatted_date_time_str = date_time_obj.strftime("%Y-%m-%dT%H:%M:%S.%f%z")
-
-# Output the result
 print(formatted_date_time_str)
+
