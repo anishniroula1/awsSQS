@@ -1,12 +1,14 @@
 import json
+import textwrap
+
 
 # Step 1: Read the JSON file
 with open('your_file.json', 'r') as file:
     data = json.load(file)
 
 # Step 2: Sort the exchanges by the 'position' field
-data['x']['x']['x'] = sorted(
-    data['x']['x']['x'],
+data['interview']['interviewData']['exchanges'] = sorted(
+    data['interview']['interviewData']['exchanges'],
     key=lambda x: x['position']
 )
 
