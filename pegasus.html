@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pegasus Process Flow</title>
+    <style>
+        canvas {
+            border: 1px solid black;
+        }
+        #moveButton {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+<canvas id="flowCanvas" width="900" height="600"></canvas>
+<button id="moveButton">Move Pegasus</button>
+
+<script>
+    const canvas = document.getElementById('flowCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // Load Pegasus image
+    const pegasus = new Image();
+    pegasus.src = 'pegasus.jpeg'; // Use the Pegasus image you uploaded
+
+    let pegasusX = 100;
+    let pegasusY = 100;
+    let targetX = 200;
+    let targetY = 150;
+    let moveToNext = false;
+    let currentStep = 0;
+
+    // Flowchart positions for each step
+    const steps = [
+        { x: 100, y: 100, description: "Start" },
+        { x: 300, y: 100, description: "User Upload document" },
+        { x: 500, y: 100, description: "Receive Kafka message" },
+        { x: 700, y: 100, description: "Service Starts the Processing" },
+        { x: 700, y: 300, description: "End" }
+    ];
+
+    // Draw flowchart elements
+    function drawFlowChart() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas
+
+        // Draw start circle
+        ctx.beginPath();
+        ctx.arc(steps[0].x, steps[0].y, 40, 0, Math.PI * 2, false);
+        ctx.fillStyle = 'white';
+        ctx.fill();
+        ctx.strokeText("Start", steps[0].x - 20, steps[0].y);
+        ctx.stroke();
+
+        // Draw other steps
+        ctx.strokeRect(steps[1].x - 50, steps[1].y - 30, 100, 60);
+        ctx.strokeText("User Upload", steps[1].x - 40, steps[1].y);
+        ctx.strokeText("document", steps[1].x - 40, steps[1].y + 15);
+
+        ctx.beginPath();
+        ctx.arc(steps[2].x, steps[2].y, 40, 0, Math.PI * 2, false);
+        ctx.fillStyle = 'white';
+        ctx.fill();
+        ctx.strokeText("Receive Kafka", steps[2].x - 35, steps[2].y);
+        ctx.strokeText("message", steps[2].x - 30, steps[2].y + 15);
+        ctx.stroke();
+
+        ctx.strokeRect(steps[3].x - 50, steps[3].y - 30, 100, 60);
+        ctx.strokeText("Service Starts", steps[3].x - 45, steps[3].y);
+        ctx.strokeText("the Processing", steps[3].x - 45, steps[3].y + 15);
+
+        // End cloud
+        ctx.beginPath();
+        ctx.arc(steps[4].x, steps[4].y, 50, 0, Math.PI * 2, false);
+        ctx.fillStyle = 'white';
+        ctx.fill();
+        ctx.strokeText("END", steps[4].x - 20, steps[4].y);
+        ctx.stroke();
+
+        // Draw arrows between the steps
+        drawArrow(steps[0], steps[1]);
+        drawArrow(steps[1], steps[2]);
+        drawArrow(steps[2], steps[3]);
+        drawArrow(steps[3], steps[4]);
+    }
+
+    // Draw an arrow from one step to another
+    function drawArrow(start, end) {
+        ctx.beginPath();
+        ctx.moveTo(start.x, start.y);
+        ctx.lineTo(end.x, end.y);
+        ctx.stroke();
+        // Draw arrowhead
+        const headlen = 10; // length of the arrow head
+        const angle = Math.atan2(end.y - start.y, end.x - start.x);
+        ctx.moveTo(end.x, end.y);
+        ctx.lineTo(end.x - headlen * Math.cos(angle - Math.PI / 6), end.y - headlen * Math.sin(angle - Math.PI / 6));
+        ctx.moveTo(end.x, end.y);
+        ctx.lineTo(end.x - headlen * Math.cos(angle + Math.PI / 6), end.y - headlen * Math.sin(angle + Math.PI / 6));
+        ctx.stroke();
+    }
+
+    // Function to move Pegasus smoothly
+    function movePegasus() {
+        if (moveToNext) {
+            const target = steps[currentStep];
+            if (pegasusX < target.x) pegasusX += 3;
+            if (pegasusX > target.x) pegasusX -= 3;
+            if (pegasusY < target.y) pegasusY += 3;
+            if (pegasusY > target.y) pegasusY -= 3;
+
+            // When Pegasus reaches the target, stop movement and move to next step
+            if (Math.abs(pegasusX - target.x) < 5 && Math.abs(pegasusY - target.y) < 5) {
+                moveToNext = false;
+                currentStep = (currentStep + 1) % steps.length; // Loop back to start after reaching the end
+            }
+        }
+    }
+
+    // Main loop to draw and animate
+    function gameLoop() {
+        drawFlowChart();
+        ctx.drawImage(pegasus, pegasusX - 20, pegasusY - 20, 40, 40); // Draw Pegasus
+        movePegasus(); // Move Pegasus to the next point
+        requestAnimationFrame(gameLoop); // Continuously refresh the canvas
+    }
+
+    // Move button click event
+    document.getElementById('moveButton').addEventListener('click', () => {
+        moveToNext = true; // Start the movement to the next step
+    });
+
+    // Start game loop once the Pegasus image is loaded
+    pegasus.onload = () => {
+        gameLoop();  // Start the game loop
+    };
+
+</script>
+
+</body>
+</html>
