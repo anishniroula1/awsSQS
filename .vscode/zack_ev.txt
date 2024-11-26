@@ -1,0 +1,31 @@
+Evaluation of Jack
+
+Jack has been with our team for the past two years. While he is consistent in showing up and putting in effort, there are some things he needs to work on to grow and help the team more.
+
+Key Observations:
+Limited Initiative:
+Jack sticks to only the tasks assigned to him in Scrum. He doesn’t take part in anything else outside of his direct responsibilities. This makes it harder for him to contribute to the team’s bigger goals.
+
+Story Complexity and Efficiency:
+The tasks Jack picks are usually smaller and simpler. Even so, he often takes the full two weeks of a sprint to finish them. When he takes on bigger tasks (over 5 points), they sometimes carry over into the next sprint, which slows down the team’s progress.
+
+Communication and Collaboration:
+Jack doesn’t ask enough questions during grooming or planning meetings. This often leads to confusion about what’s needed, and he ends up asking for help at the last minute. When that happens, it sometimes means the requirements aren’t met or that he didn’t fully understand the task. This has caused delays and extra work for others on the team.
+
+Quality and Accountability:
+Jack’s code has often needed fixes or even full rewrites because of missed details or misunderstandings about the requirements. This has created extra work for others and affected the team’s efficiency.
+
+Recommendations for Improvement:
+Be More Engaged:
+Jack should try to get more involved in meetings and discussions. Asking questions early will help him understand the tasks better.
+
+Take on Challenges:
+He should try working on harder tasks to improve his skills and build confidence. This will also help him finish tasks faster and more efficiently.
+
+Ask for Help Early:
+Instead of waiting until the last minute, Jack should ask for help as soon as he feels stuck. This will save time and keep things moving smoothly.
+
+Take Responsibility:
+Jack needs to take ownership of his tasks and make sure he fully understands the requirements before starting. This will reduce mistakes and make his work more reliable.
+
+If Jack focuses on improving in these areas, he can grow as a team member and make a bigger impact. We’re here to support him with feedback, guidance, and training to help him succeed.
