@@ -2,7 +2,7 @@ import os
 import pandas as pd
 import math
 
-def save_file_names_to_excel_in_batches(folder_path, excel_file_path, batch_size=10):
+def save_file_names_in_nested_batches(folder_path, excel_file_path, batch_size=10):
     try:
         # List all files in the folder
         files_and_folders = os.listdir(folder_path)
@@ -10,24 +10,21 @@ def save_file_names_to_excel_in_batches(folder_path, excel_file_path, batch_size
         
         # Remove duplicates
         unique_files = list(set(files))
-        total_files = len(unique_files)
         
-        # Calculate files per batch
-        files_per_batch = math.ceil(total_files / batch_size)
+        # Split the files into batches
+        batches = [unique_files[i:i + batch_size] for i in range(0, len(unique_files), batch_size)]
         
-        # Prepare data with batch labels
+        # Create a DataFrame for the Excel file
         data = []
-        for i, file in enumerate(unique_files):
-            batch_number = (i // files_per_batch) + 1
-            data.append({"Batch": f"Batch {batch_number}", "File Name": file})
+        for i, batch in enumerate(batches, start=1):
+            data.append({"Batch": f"Batch {i}", "Files": str(batch)})
         
-        # Create a DataFrame
         df = pd.DataFrame(data)
         
         # Save the DataFrame to an Excel file
-        df.to_excel(excel_file_path, index=False, sheet_name="File Names")
+        df.to_excel(excel_file_path, index=False, sheet_name="File Batches")
         
-        print(f"File names have been saved to {excel_file_path}")
+        print(f"File batches have been saved to {excel_file_path}")
     except Exception as e:
         print(f"An error occurred: {e}")
 
@@ -35,4 +32,4 @@ def save_file_names_to_excel_in_batches(folder_path, excel_file_path, batch_size
 folder_path = "your_folder_path_here"
 excel_file_path = "output_file.xlsx"
 
-save_file_names_to_excel_in_batches(folder_path, excel_file_path)
+save_file_names_in_nested_batches(folder_path, excel_file_path)
