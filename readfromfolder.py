@@ -1,27 +1,38 @@
 import os
 import pandas as pd
+import math
 
-def save_file_names_to_excel(folder_path, excel_file_path):
+def save_file_names_to_excel_in_batches(folder_path, excel_file_path, batch_size=10):
     try:
-        # List all files and folders in the given directory
+        # List all files in the folder
         files_and_folders = os.listdir(folder_path)
-        
-        # Filter to get only files
         files = [file for file in files_and_folders if os.path.isfile(os.path.join(folder_path, file))]
         
-        # Create a pandas DataFrame with the file names
-        df = pd.DataFrame({'File Name': files})
+        # Remove duplicates
+        unique_files = list(set(files))
+        total_files = len(unique_files)
+        
+        # Calculate files per batch
+        files_per_batch = math.ceil(total_files / batch_size)
+        
+        # Prepare data with batch labels
+        data = []
+        for i, file in enumerate(unique_files):
+            batch_number = (i // files_per_batch) + 1
+            data.append({"Batch": f"Batch {batch_number}", "File Name": file})
+        
+        # Create a DataFrame
+        df = pd.DataFrame(data)
         
         # Save the DataFrame to an Excel file
-        df.to_excel(excel_file_path, index=False)
+        df.to_excel(excel_file_path, index=False, sheet_name="File Names")
         
         print(f"File names have been saved to {excel_file_path}")
     except Exception as e:
         print(f"An error occurred: {e}")
 
-# Replace 'your_folder_path_here' with the path to the folder you want to read
+# Replace these paths with your actual folder path and desired output file
 folder_path = "your_folder_path_here"
-# Replace 'output_file.xlsx' with the desired output Excel file name
 excel_file_path = "output_file.xlsx"
 
-save_file_names_to_excel(folder_path, excel_file_path)
+save_file_names_to_excel_in_batches(folder_path, excel_file_path)
