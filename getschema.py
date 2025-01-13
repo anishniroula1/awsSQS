@@ -19,3 +19,20 @@ def create_schemas(schemas):
             f"PGPASSWORD=postgres psql -h localhost -p 5434 -U postgres -d postgres -c 'CREATE SCHEMA IF NOT EXISTS {schema};'"
         )
         run_command(create_schema_command)
+
+
+
+# Drop all existing schemas to clean the local database
+drop_all_command = (
+    f"PGPASSWORD=postgres psql -h localhost -p 5434 -U postgres -d postgres -c \"DO $$ DECLARE schema_name TEXT; "
+    f"BEGIN FOR schema_name IN SELECT schema_name FROM information_schema.schemata WHERE schema_name NOT IN ('pg_catalog', 'information_schema') LOOP "
+    f"EXECUTE 'DROP SCHEMA IF EXISTS ' || schema_name || ' CASCADE'; END LOOP; END $$;\""
+)
+run_command(drop_all_command)
+
+# Fetch schemas from the remote database
+schemas = get_schemas()
+print("Schemas to be created:", schemas)
+
+# Create schemas in the local database
+create_schemas(schemas)
