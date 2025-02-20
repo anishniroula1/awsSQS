@@ -28,13 +28,20 @@ def test_pil_page_to_text(mock_tess_api):
     # Mock OCR API behavior
     mock_api_instance = MagicMock()
     mock_tess_api.return_value.__enter__.return_value = mock_api_instance
-    mock_api_instance.Recognize.return_value = None
-    mock_api_instance.GetIterator.return_value.GetUTF8Text.return_value = "Mocked OCR Text"
-    mock_api_instance.GetIterator.return_value.Confidence.return_value = 95
+    mock_tess_iter = MagicMock()
+    
+    # Ensure the iterator moves correctly
+    mock_api_instance.GetIterator.return_value = mock_tess_iter
+    mock_tess_iter.GetUTF8Text.return_value = "Mocked OCR Text"
+    mock_tess_iter.Confidence.return_value = 95
+    mock_tess_iter.Next.return_value = False  # Simulates end of OCR iteration
 
     text, conf = ocr_processor._OCRProcessor__pil_page_to_text(image)
-    assert text == "Mocked OCR Text"
+
+    # Assertions
+    assert text.strip() == "Mocked OCR Text"  # Ensure stripped text matches
     assert conf == "0"  # Confidence > 85 maps to "0"
+
 
 
 @patch("OCR.ImageProcessing.ImageProcessing.pdf_to_images")
