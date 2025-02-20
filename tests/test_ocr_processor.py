@@ -81,6 +81,54 @@ def test_execute_ocr_process(mock_tess_api, mock_pdf_to_images):
     assert result["text"] == "Mocked OCR Text", f"Expected 'Mocked OCR Text' but got '{result['text']}'"
     assert result["ocr_conf"] == "0" * len("Mocked OCR Text".replace(" ", "")), f"Expected confidence mapping but got '{result['ocr_conf']}'"
 
+@patch("tesserocr.PyTessBaseAPI")
+def test_correct_image_alignment_exception(mock_tess_api):
+    image_processor = ImageProcessing()
+    ocr_processor = OCRProcessor()
+    image = Image.new("RGB", (100, 100), "white")
+
+    # Force OCR API to raise an exception
+    mock_tess_api.side_effect = Exception("OCR Alignment Error")
+
+    # Call function and verify it returns the original image
+    corrected_image = ocr_processor._OCRProcessor__correct_image_alignment(image, image_processor)
+    assert isinstance(corrected_image, Image.Image), "Function should return an image even on failure"
+
+
+@patch("tesserocr.PyTessBaseAPI")
+def test_pil_page_to_text_exception(mock_tess_api):
+    ocr_processor = OCRProcessor()
+    image = Image.new("RGB", (200, 100), "white")
+
+    # Force OCR API to raise an exception
+    mock_tess_api.side_effect = Exception("OCR Processing Error")
+
+    # Call function and verify it returns empty values
+    text, conf = ocr_processor._OCRProcessor__pil_page_to_text(image)
+    assert text == "", f"Expected empty text on exception but got '{text}'"
+    assert conf == "", f"Expected empty confidence string on exception but got '{conf}'"
+
+
+@patch("OCR.ImageProcessing.ImageProcessing.pdf_to_images")
+@patch("tesserocr.PyTessBaseAPI")
+def test_execute_ocr_process_exception(mock_tess_api, mock_pdf_to_images):
+    ocr_processor = OCRProcessor()
+
+    # Mock PDF to images conversion to return one valid image
+    image = Image.new("RGB", (200, 100), "white")
+    mock_pdf_to_images.return_value = [image]
+
+    # Force OCR API to raise an exception
+    mock_tess_api.side_effect = Exception("OCR Execution Error")
+
+    # Call function and verify it returns empty values
+    dummy_pdf_bytes = b"%PDF-1.4\n%%EOF"
+    result = ocr_processor.execute_ocr_process(dummy_pdf_bytes)
+
+    assert isinstance(result, dict), "Function should return a dictionary on failure"
+    assert result["text"] == "", f"Expected empty text on exception but got '{result['text']}'"
+    assert result["ocr_conf"] == "", f"Expected empty confidence string on exception but got '{result['ocr_conf']}'"
+
 
 if __name__ == "__main__":
     pytest.main()
