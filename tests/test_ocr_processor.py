@@ -25,24 +25,27 @@ def test_pil_page_to_text(mock_tess_api):
     ocr_processor = OCRProcessor()
     image = Image.new("RGB", (200, 200), "white")
 
-    # Mock OCR API behavior
+    # Mock OCR API instance
     mock_api_instance = MagicMock()
     mock_tess_api.return_value.__enter__.return_value = mock_api_instance
-    mock_tess_iter = MagicMock()
-
-    # Ensure GetIterator() returns a valid mock
-    mock_api_instance.GetIterator.return_value = mock_tess_iter
     
-    # Simulate OCR reading a word
+    # Mock OCR Iterator
+    mock_tess_iter = MagicMock()
+    mock_api_instance.GetIterator.return_value = mock_tess_iter
+
+    # Simulate OCR text retrieval
     mock_tess_iter.GetUTF8Text.return_value = "Mocked OCR Text"
     mock_tess_iter.Confidence.return_value = 95
-    mock_tess_iter.Next.side_effect = [True, False]  # Simulate iterating once then stopping
+    
+    # Simulate iteration (run once, then stop)
+    mock_tess_iter.Next.side_effect = [True, False]
 
+    # Run OCR function
     text, conf = ocr_processor._OCRProcessor__pil_page_to_text(image)
 
     # Assertions
-    assert text.strip() == "Mocked OCR Text"  # Ensure stripped text matches
-    assert conf == "0" * len("Mocked OCR Text".replace(" ", ""))  # Confidence mapping
+    assert text.strip() == "Mocked OCR Text", f"Expected 'Mocked OCR Text' but got '{text}'"
+    assert conf == "0" * len("Mocked OCR Text".replace(" ", "")), f"Expected confidence mapping but got '{conf}'"
 
 
 
