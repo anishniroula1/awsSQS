@@ -20,10 +20,19 @@ def test_correct_image_alignment(mock_tess_api):
     assert isinstance(corrected_image, Image.Image)
 
 
+from PIL import Image, ImageDraw, ImageFont
+import pytest
+from unittest.mock import patch, MagicMock
+from OCR.OCRProcessor import OCRProcessor
+
 @patch("tesserocr.PyTessBaseAPI")
 def test_pil_page_to_text(mock_tess_api):
     ocr_processor = OCRProcessor()
-    image = Image.new("RGB", (200, 200), "white")
+    
+    # Create an image with text
+    image = Image.new("RGB", (200, 100), "white")
+    draw = ImageDraw.Draw(image)
+    draw.text((10, 40), "Mocked OCR Text", fill="black")  # Draw text on the image
 
     # Mock OCR API instance
     mock_api_instance = MagicMock()
@@ -33,12 +42,10 @@ def test_pil_page_to_text(mock_tess_api):
     mock_tess_iter = MagicMock()
     mock_api_instance.GetIterator.return_value = mock_tess_iter
 
-    # Simulate OCR text retrieval
+    # Simulate OCR reading text
     mock_tess_iter.GetUTF8Text.return_value = "Mocked OCR Text"
     mock_tess_iter.Confidence.return_value = 95
-    
-    # Simulate iteration (run once, then stop)
-    mock_tess_iter.Next.side_effect = [True, False]
+    mock_tess_iter.Next.side_effect = [True, False]  # Simulate iterating once then stopping
 
     # Run OCR function
     text, conf = ocr_processor._OCRProcessor__pil_page_to_text(image)
@@ -46,6 +53,7 @@ def test_pil_page_to_text(mock_tess_api):
     # Assertions
     assert text.strip() == "Mocked OCR Text", f"Expected 'Mocked OCR Text' but got '{text}'"
     assert conf == "0" * len("Mocked OCR Text".replace(" ", "")), f"Expected confidence mapping but got '{conf}'"
+
 
 
 
