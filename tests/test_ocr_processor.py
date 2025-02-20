@@ -44,7 +44,7 @@ def test_execute_ocr_process():
     image_processor = ImageProcessing()
 
     # Create a dummy PDF bytes
-    dummy_pdf_bytes = b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\nxref\n0 1\n0000000000 65535 f \ntrailer\n<< /Root 1 0 R >>\nstartxref\n9\n%%EOF"
+    dummy_pdf_bytes = b"%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF"
 
     # Test valid OCR execution
     result = ocr_processor.execute_ocr_process(dummy_pdf_bytes)
