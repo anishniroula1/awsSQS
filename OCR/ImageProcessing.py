@@ -2,9 +2,10 @@ import os
 import tempfile
 import cv2
 import numpy as np
-from pdf2image import convert_from_bytes, convert_from_path
+from pdf2image import convert_from_path
 from PIL import Image
 from PyPdf2 import PdfReader
+import gc
 
 
 class ImageProcessing:
@@ -13,8 +14,7 @@ class ImageProcessing:
     PDF pages to images and rotating images to correct their orientation.
     """
 
-    @staticmethod
-    def pdf_to_images(pdf_bytes):
+    def pdf_to_images(self, pdf_bytes):
         """
         Converts a PDF file to a series of images, one for each page.
 
@@ -30,23 +30,49 @@ class ImageProcessing:
             temp_pdf.flush()
             os.fsync(temp_pdf.fileno())
 
-            doc = PdfReader(temp_pdf.name)
-            pages = doc.pages
-            num_pages = len(pages)
+            try:
+                doc = PdfReader(temp_pdf.name)
+                pages = doc.pages
+                num_pages = len(pages)
 
-            for page_number in range(1, num_pages + 1):
-                page_images = convert_from_path(
-                    temp_pdf.name,
-                    first_page=page_number,
-                    last_page=page_number,
-                    dpi=150,
-                    thread_count=1,
-                )
-                if page_images:
-                    print(f"Yielding image for page {page_number}")
-                    yield page_images[0]
+                for page_number in range(1, num_pages + 1):
+                    page = pages[page_number - 1]
+                    yield self.__convert_page(temp_pdf.name, page_number, page)
+            except Exception as e:
+                page_number = 1
+                while True:
+                    try:
+                        page_images = convert_from_path(temp_pdf.name, first_page=page_number, last_page=page_number)
+                        if not page_images:
+                            break
+
+                        image = page_images[0]
+                        if image.height > 3600 or image.width > 2700:
+                            yield image.resize((2200, 1700))
+                        else:
+                            yield image
+
+                        page_number += 1
+                        gc.collect()
+                    except Exception as e:
+                        raise Exception
 
             os.remove(temp_pdf.name)
+
+    @staticmethod
+    def __convert_page(pdf_path, page_number, page):
+        doc_height = int(page.mediabox.height)
+        doc_width = int(page.mediabox.width)
+
+        if doc_height > 3600 or doc_width > 2700:
+            page_images = convert_from_path(pdf_path, first_page=page_number, last_page=page_number,
+                                            size=(2200, 1700))
+        else:
+            page_images = convert_from_path(pdf_path, first_page=page_number, last_page=page_number)
+
+        if page_images:
+            return page_images[0]
+
 
     @staticmethod
     def rotate_image(image, angle):
