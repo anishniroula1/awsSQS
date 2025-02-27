@@ -1272,3 +1272,26 @@ def run_with_tracing(func, *args, **kwargs):
         tracer.generate_mermaid_diagram()
         tracer.generate_html_visualization()
     return result
+
+from functools import wraps
+from unittest.mock import patch
+
+def test_traced_patch(*patch_args, **patch_kwargs):
+    """Combine @patch and @trace_and_visualize decorators for test methods."""
+    def decorator(func):
+        # Apply the patch decorator first
+        patched_func = patch(*patch_args, **patch_kwargs)(func)
+        
+        # Then apply the tracing decorator
+        @wraps(patched_func)
+        def wrapper(*args, **kwargs):
+            tracer = FunctionCallTracer()
+            tracer.start_tracing()
+            try:
+                result = patched_func(*args, **kwargs)
+            finally:
+                tracer.stop_tracing()
+                tracer.generate_html_visualization(f"{func.__name__}_trace.html")
+            return result
+        return wrapper
+    return decorator
