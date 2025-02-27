@@ -1,0 +1,23 @@
+digraph FunctionCalls {
+    node [shape=box, style=filled, fillcolor=lightblue];
+    trace_with_visual_py_calculate_area_8 [label="trace_with_visual.py\ncalculate_area()\nlength: 5\n(int)\nwidth: 10\n(int)"];
+    trace_with_visual_py_process_25 [label="trace_with_visual.py\nprocess()"];
+    trace_with_visual_py_transform_item_18 [label="trace_with_visual.py\ntransform_item()\nitem: 5\n(int)"];
+    trace_with_visual_py_<listcomp>_29 [label="trace_with_visual.py\n<listcomp>()\n.0: <list_iterator ob...\n(list_iterator)\nfactor: 3\n(int)"];
+    trace_with_visual_py_main_decorated_32 [label="trace_with_visual.py\nmain_decorated()"];
+    FunctionCallTracer_py_stop_tracing_93 [label="FunctionCallTracer.py\nstop_tracing()"];
+    trace_with_visual_py___inner_calculation_5 [label="trace_with_visual.py\n__inner_calculation()\nx: 5\n(int)\ny: 10\n(int)"];
+    trace_with_visual_py___hidden_method_28 [label="trace_with_visual.py\n__hidden_method()\nfactor: 3\n(int)"];
+    trace_with_visual_py_process_data_11 [label="trace_with_visual.py\nprocess_data()\ndata_list: [1, 2, 3, 4, 5]\n(list)"];
+    trace_with_visual_py___init___22 [label="trace_with_visual.py\n__init__()\ndata: [1, 2, 3, 4, 5]\n(list)"];
+    trace_with_visual_py_main_decorated_32 -> trace_with_visual_py_calculate_area_8;
+    trace_with_visual_py_calculate_area_8 -> trace_with_visual_py___inner_calculation_5;
+    trace_with_visual_py___inner_calculation_5 -> trace_with_visual_py___init___22;
+    trace_with_visual_py___init___22 -> trace_with_visual_py_process_25;
+    trace_with_visual_py_process_25 -> trace_with_visual_py_process_data_11;
+    trace_with_visual_py_process_data_11 -> trace_with_visual_py_transform_item_18;
+    trace_with_visual_py_transform_item_18 -> trace_with_visual_py_transform_item_18;
+    trace_with_visual_py_transform_item_18 -> trace_with_visual_py___hidden_method_28;
+    trace_with_visual_py___hidden_method_28 -> trace_with_visual_py_<listcomp>_29;
+    trace_with_visual_py_<listcomp>_29 -> FunctionCallTracer_py_stop_tracing_93;
+}

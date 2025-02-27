@@ -1,0 +1,444 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Function Call Visualization</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        #graph {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .tooltip {
+            position: absolute;
+            background-color: #fff;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            font-size: 12px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+            max-width: 300px;
+        }
+        .param-name {
+            font-weight: bold;
+            color: #444;
+        }
+        .param-value {
+            color: #0066cc;
+        }
+        .param-type {
+            color: #666;
+            font-style: italic;
+        }
+        .node circle {
+            stroke-width: 2px;
+        }
+        .node text {
+            font-size: 12px;
+        }
+        .link {
+            stroke: #999;
+            stroke-opacity: 0.6;
+            stroke-width: 1.5px;
+        }
+        .controls {
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .controls button {
+            background-color: #4285f4;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .controls button:hover {
+            background-color: #3367d6;
+        }
+        .legend {
+            display: flex;
+            justify-content: center;
+            margin-top: 10px;
+            font-size: 12px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 0 10px;
+        }
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        .function-details {
+            margin-top: 20px;
+            background-color: white;
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: none;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        th, td {
+            text-align: left;
+            padding: 8px;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #f0f0f0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Function Call Visualization</h1>
+        
+        <div class="controls">
+            <button id="resetBtn">Reset View</button>
+            <div>
+                <label for="searchInput">Search: </label>
+                <input type="text" id="searchInput" placeholder="Function name...">
+            </div>
+        </div>
+        
+        <div id="graph"></div>
+        
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #4285f4;"></div>
+                <span>Main Methods</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #34a853;"></div>
+                <span>Regular Functions</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #fbbc05;"></div>
+                <span>Private Methods</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #ea4335;"></div>
+                <span>Constructors</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #9334e6;"></div>
+                <span>Class Methods</span>
+            </div>
+        </div>
+        
+        <div id="functionDetails" class="function-details">
+            <h3 id="selectedFunction">Function Details</h3>
+            <p id="fileInfo">File: </p>
+            <h4>Parameters:</h4>
+            <table id="paramsTable">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Value</th>
+                        <th>Type</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+    
+    <div class="tooltip" id="tooltip"></div>
+
+    <script>
+        // Graph data from Python
+        const graphData = {"nodes": [{"id": 0, "name": "DataProcessor.process", "filename": "trace_with_visual.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/trace_with_visual.py", "line": "25", "type": "class_method", "params": []}, {"id": 1, "name": "process", "filename": "trace_with_visual.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/trace_with_visual.py", "line": "25", "type": "function", "params": []}, {"id": 2, "name": "__inner_calculation", "filename": "trace_with_visual.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/trace_with_visual.py", "line": "5", "type": "private_method", "params": [{"name": "x", "value": "5", "type": "int"}, {"name": "y", "value": "10", "type": "int"}]}, {"id": 3, "name": "__init__", "filename": "trace_with_visual.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/trace_with_visual.py", "line": "22", "type": "constructor", "params": []}, {"id": 4, "name": "DataProcessor.__hidden_method", "filename": "trace_with_visual.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/trace_with_visual.py", "line": "28", "type": "class_method", "params": [{"name": "factor", "value": "3", "type": "int"}]}, {"id": 5, "name": "transform_item", "filename": "trace_with_visual.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/trace_with_visual.py", "line": "18", "type": "function", "params": [{"name": "item", "value": "5", "type": "int"}]}, {"id": 6, "name": "stop_tracing", "filename": "FunctionCallTracer.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/FunctionCallTracer.py", "line": "115", "type": "function", "params": []}, {"id": 7, "name": "DataProcessor.__init__", "filename": "trace_with_visual.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/trace_with_visual.py", "line": "22", "type": "class_method", "params": [{"name": "data", "value": "[1, 2, 3, 4, 5]", "type": "list"}]}, {"id": 8, "name": "<listcomp>", "filename": "trace_with_visual.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/trace_with_visual.py", "line": "29", "type": "function", "params": [{"name": ".0", "value": "<list_iterator ob...", "type": "list_iterator"}, {"name": "factor", "value": "3", "type": "int"}]}, {"id": 9, "name": "__hidden_method", "filename": "trace_with_visual.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/trace_with_visual.py", "line": "28", "type": "private_method", "params": []}, {"id": 10, "name": "process_data", "filename": "trace_with_visual.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/trace_with_visual.py", "line": "11", "type": "function", "params": [{"name": "data_list", "value": "[1, 2, 3, 4, 5]", "type": "list"}]}, {"id": 11, "name": "main_decorated", "filename": "trace_with_visual.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/trace_with_visual.py", "line": "32", "type": "main_method", "params": []}, {"id": 12, "name": "calculate_area", "filename": "trace_with_visual.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/trace_with_visual.py", "line": "8", "type": "function", "params": [{"name": "length", "value": "5", "type": "int"}, {"name": "width", "value": "10", "type": "int"}]}], "links": [{"source": 11, "target": 12}, {"source": 12, "target": 2}, {"source": 2, "target": 3}, {"source": 7, "target": 1}, {"source": 0, "target": 10}, {"source": 10, "target": 5}, {"source": 5, "target": 5}, {"source": 5, "target": 9}, {"source": 4, "target": 8}, {"source": 8, "target": 6}]};
+        
+        // Color mapping by node type
+        const colorMap = {
+            main_method: "#4285f4",
+            function: "#34a853", 
+            private_method: "#fbbc05",
+            constructor: "#ea4335",
+            class_method: "#9334e6"
+        };
+        
+        // Set up the SVG
+        const width = document.getElementById("graph").clientWidth;
+        const height = 600;
+        
+        const svg = d3.select("#graph")
+            .append("svg")
+            .attr("width", width)
+            .attr("height", height)
+            .attr("viewBox", [0, 0, width, height])
+            .call(d3.zoom().on("zoom", (event) => {
+                g.attr("transform", event.transform);
+            }));
+            
+        const g = svg.append("g");
+        
+        // Set up the simulation
+        const simulation = d3.forceSimulation(graphData.nodes)
+            .force("link", d3.forceLink(graphData.links).id(d => d.id).distance(100))
+            .force("charge", d3.forceManyBody().strength(-300))
+            .force("center", d3.forceCenter(width / 2, height / 2))
+            .force("collide", d3.forceCollide().radius(50));
+        
+        // Create links
+        const link = g.append("g")
+            .selectAll("line")
+            .data(graphData.links)
+            .enter()
+            .append("line")
+            .attr("class", "link")
+            .attr("marker-end", "url(#arrowhead)");
+        
+        // Create arrowhead marker
+        svg.append("defs").append("marker")
+            .attr("id", "arrowhead")
+            .attr("viewBox", "0 -5 10 10")
+            .attr("refX", 20)
+            .attr("refY", 0)
+            .attr("markerWidth", 6)
+            .attr("markerHeight", 6)
+            .attr("orient", "auto")
+            .append("path")
+            .attr("d", "M0,-5L10,0L0,5")
+            .attr("fill", "#999");
+        
+        // Create nodes
+        const node = g.append("g")
+            .selectAll(".node")
+            .data(graphData.nodes)
+            .enter()
+            .append("g")
+            .attr("class", "node")
+            .call(d3.drag()
+                .on("start", dragstarted)
+                .on("drag", dragged)
+                .on("end", dragended))
+            .on("click", showFunctionDetails);
+        
+        // Add circles to nodes
+        node.append("circle")
+            .attr("r", 10)
+            .attr("fill", d => colorMap[d.type])
+            .attr("stroke", d => d3.rgb(colorMap[d.type]).darker(0.5));
+        
+        // Add labels to nodes
+        node.append("text")
+            .attr("dx", 15)
+            .attr("dy", 5)
+            .text(d => d.name + "()");
+        
+        // Tooltip
+        const tooltip = d3.select("#tooltip");
+        
+        node.on("mouseover", function(event, d) {
+            // Show tooltip
+            tooltip.transition().duration(200).style("opacity", .9);
+            
+            // Create tooltip content
+            let tooltipContent = `<strong>${d.name}()</strong><br/>`;
+            tooltipContent += `File: ${d.filename}:${d.line}<br/>`;
+            
+            if (d.params.length > 0) {
+                tooltipContent += `<strong>Parameters:</strong><br/>`;
+                d.params.forEach(param => {
+                    tooltipContent += `<span class="param-name">${param.name}</span>: `;
+                    tooltipContent += `<span class="param-value">${param.value}</span> `;
+                    tooltipContent += `<span class="param-type">(${param.type})</span><br/>`;
+                });
+            } else {
+                tooltipContent += "No parameters";
+            }
+            
+            tooltip.html(tooltipContent)
+                .style("left", (event.pageX + 10) + "px")
+                .style("top", (event.pageY - 28) + "px");
+        })
+        .on("mouseout", function() {
+            tooltip.transition().duration(500).style("opacity", 0);
+        });
+        
+        // Function to update simulation
+        simulation.on("tick", () => {
+            link
+                .attr("x1", d => d.source.x)
+                .attr("y1", d => d.source.y)
+                .attr("x2", d => d.target.x)
+                .attr("y2", d => d.target.y);
+            
+            node.attr("transform", d => `translate(${d.x},${d.y})`);
+        });
+        
+        // Drag functions
+        function dragstarted(event, d) {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+        }
+        
+        function dragged(event, d) {
+            d.fx = event.x;
+            d.fy = event.y;
+        }
+        
+        function dragended(event, d) {
+            if (!event.active) simulation.alphaTarget(0);
+            d.fx = null;
+            d.fy = null;
+        }
+        
+        // Reset view button
+        document.getElementById("resetBtn").addEventListener("click", () => {
+            svg.transition().duration(750).call(
+                d3.zoom().transform,
+                d3.zoomIdentity
+            );
+            
+            // Reset node highlighting
+            node.style("opacity", 1);
+            link.style("opacity", 0.6);
+            node.selectAll("circle").attr("r", 10).attr("stroke-width", 2);
+            link.attr("stroke-width", 1.5);
+            
+            // Hide function details
+            document.getElementById("functionDetails").style.display = "none";
+        });
+        
+        // Search functionality
+        document.getElementById("searchInput").addEventListener("input", function() {
+            const searchTerm = this.value.toLowerCase();
+            
+            node.each(function(d) {
+                const nodeElement = d3.select(this);
+                const isMatch = d.name.toLowerCase().includes(searchTerm) ||
+                               d.filename.toLowerCase().includes(searchTerm);
+                
+                nodeElement.style("opacity", isMatch || searchTerm === "" ? 1 : 0.2);
+            });
+            
+            link.style("opacity", searchTerm === "" ? 0.6 : 0.1);
+        });
+        
+        // Show function details
+        function showFunctionDetails(event, d) {
+            const detailsDiv = document.getElementById("functionDetails");
+            const fnTitle = document.getElementById("selectedFunction");
+            const fileInfo = document.getElementById("fileInfo");
+            const paramsTable = document.getElementById("paramsTable").getElementsByTagName("tbody")[0];
+            
+            // Clear previous data
+            paramsTable.innerHTML = "";
+            
+            // Update details
+            fnTitle.textContent = d.name + "()";
+            fileInfo.textContent = "File: " + d.filepath + ":" + d.line;
+            
+            // Add parameters
+            if (d.params.length > 0) {
+                d.params.forEach(param => {
+                    const row = paramsTable.insertRow();
+                    const nameCell = row.insertCell(0);
+                    const valueCell = row.insertCell(1);
+                    const typeCell = row.insertCell(2);
+                    
+                    nameCell.textContent = param.name;
+                    valueCell.textContent = param.value;
+                    typeCell.textContent = param.type;
+                });
+            } else {
+                const row = paramsTable.insertRow();
+                const cell = row.insertCell(0);
+                cell.colSpan = 3;
+                cell.textContent = "No parameters";
+            }
+            
+            // Show details div
+            detailsDiv.style.display = "block";
+            
+            // Highlight connected nodes and links
+            highlightConnections(d);
+        }
+        
+        function highlightConnections(selectedNode) {
+            // Reset previous highlight
+            node.selectAll("circle").attr("r", 10);
+            
+            // Find connected nodes
+            const linkedNodeIds = new Set();
+            
+            // Find outgoing connections
+            graphData.links.forEach(link => {
+                if (link.source.id === selectedNode.id) {
+                    linkedNodeIds.add(link.target.id);
+                }
+            });
+            
+            // Find incoming connections
+            graphData.links.forEach(link => {
+                if (link.target.id === selectedNode.id) {
+                    linkedNodeIds.add(link.source.id);
+                }
+            });
+            
+            // Highlight selected node
+            node.filter(d => d.id === selectedNode.id)
+                .select("circle")
+                .attr("r", 15)
+                .attr("stroke-width", 3);
+            
+            // Highlight connected nodes
+            node.filter(d => linkedNodeIds.has(d.id))
+                .select("circle")
+                .attr("r", 12)
+                .attr("stroke-width", 2);
+            
+            // Highlight relevant links
+            link.attr("stroke-width", d => 
+                (d.source.id === selectedNode.id || d.target.id === selectedNode.id) 
+                    ? 3 : 1.5
+            );
+            
+            // Adjust opacity
+            node.style("opacity", d => 
+                d.id === selectedNode.id || linkedNodeIds.has(d.id) ? 1 : 0.3
+            );
+            
+            link.style("opacity", d => 
+                (d.source.id === selectedNode.id || d.target.id === selectedNode.id)
+                    ? 1 : 0.1
+            );
+        }
+    </script>
+</body>
+</html>
