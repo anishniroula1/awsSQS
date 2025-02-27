@@ -1,4 +1,5 @@
 import sys
+from FunctionCallTracer import FunctionCallTracer, trace_and_visualize, run_with_tracing
 
 def global_trace(frame, event, arg):
     """
@@ -49,31 +50,35 @@ def __iner_method(length, width):
 def calculate_area(length, width):
     return __iner_method(length, width)
 
-def process_data(data_list):
-    result = []
-    for item in data_list:
-        processed = transform_item(item)
-        result.append(processed)
-    return result
 
 def transform_item(item):
     return item * 2
 
+class Process:
+    def __init__(self, data_list):
+        self._data_list = data_list
+
+    def process_data(self):
+        result = []
+        for item in self._data_list:
+            processed = transform_item(item)
+            result.append(processed)
+        return result
+
 # Main execution
+@trace_and_visualize
 def main():
     # Enable tracing
-    sys.settrace(global_trace)
     
     # Run code that we want to trace
     area = calculate_area(5, 10)
     print(f"Area result: {area}")
     
     numbers = [1, 2, 3, 4, 5]
-    processed = process_data(numbers)
+    processed = Process(numbers).process_data()
     print(f"Processed data: {processed}")
     
     # Disable tracing
-    sys.settrace(None)
 
 if __name__ == "__main__":
     main()

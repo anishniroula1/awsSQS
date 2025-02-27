@@ -73,13 +73,27 @@
             background-color: #4285f4;
             color: white;
             border: none;
-            padding: 8px 16px;
+            padding: 8px 12px;
+            margin-right: 8px;
             border-radius: 4px;
             cursor: pointer;
             font-size: 14px;
         }
         .controls button:hover {
             background-color: #3367d6;
+        }
+        #expandAllBtn {
+            background-color: #34a853;
+        }
+        #expandAllBtn:hover {
+            background-color: #2d8e47;
+        }
+        #collapseAllBtn {
+            background-color: #fbbc05;
+            color: #333;
+        }
+        #collapseAllBtn:hover {
+            background-color: #f5ae00;
         }
         .legend {
             display: flex;
@@ -95,8 +109,21 @@
         .legend-color {
             width: 12px;
             height: 12px;
-            border-radius: 50%;
             margin-right: 5px;
+        }
+        .legend-color.circle {
+            border-radius: 50%;
+        }
+        .legend-color.square {
+            border-radius: 3px;
+        }
+        
+        /* Nodes and collapsing styles */
+        .node[data-collapsed="true"] .expand-icon {
+            cursor: pointer;
+        }
+        .node[data-collapsed="false"] .expand-icon {
+            cursor: pointer;
         }
         .function-details {
             margin-top: 20px;
@@ -126,7 +153,11 @@
         <h1>Function Call Visualization</h1>
         
         <div class="controls">
-            <button id="resetBtn">Reset View</button>
+            <div>
+                <button id="resetBtn">Reset View</button>
+                <button id="expandAllBtn">Expand All Classes</button>
+                <button id="collapseAllBtn">Collapse All Classes</button>
+            </div>
             <div>
                 <label for="searchInput">Search: </label>
                 <input type="text" id="searchInput" placeholder="Function name...">
@@ -137,23 +168,27 @@
         
         <div class="legend">
             <div class="legend-item">
-                <div class="legend-color" style="background-color: #4285f4;"></div>
+                <div class="legend-color square" style="background-color: #673ab7;"></div>
+                <span>Classes (click to expand/collapse)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color circle" style="background-color: #4285f4;"></div>
                 <span>Main Methods</span>
             </div>
             <div class="legend-item">
-                <div class="legend-color" style="background-color: #34a853;"></div>
+                <div class="legend-color circle" style="background-color: #34a853;"></div>
                 <span>Regular Functions</span>
             </div>
             <div class="legend-item">
-                <div class="legend-color" style="background-color: #fbbc05;"></div>
+                <div class="legend-color circle" style="background-color: #fbbc05;"></div>
                 <span>Private Methods</span>
             </div>
             <div class="legend-item">
-                <div class="legend-color" style="background-color: #ea4335;"></div>
+                <div class="legend-color circle" style="background-color: #ea4335;"></div>
                 <span>Constructors</span>
             </div>
             <div class="legend-item">
-                <div class="legend-color" style="background-color: #9334e6;"></div>
+                <div class="legend-color circle" style="background-color: #9334e6;"></div>
                 <span>Class Methods</span>
             </div>
         </div>
@@ -179,7 +214,7 @@
 
     <script>
         // Graph data from Python
-        const graphData = {"nodes": [{"id": 0, "name": "DataProcessor.process", "filename": "trace_with_visual.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/trace_with_visual.py", "line": "25", "type": "class_method", "params": []}, {"id": 1, "name": "process", "filename": "trace_with_visual.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/trace_with_visual.py", "line": "25", "type": "function", "params": []}, {"id": 2, "name": "__inner_calculation", "filename": "trace_with_visual.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/trace_with_visual.py", "line": "5", "type": "private_method", "params": [{"name": "x", "value": "5", "type": "int"}, {"name": "y", "value": "10", "type": "int"}]}, {"id": 3, "name": "__init__", "filename": "trace_with_visual.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/trace_with_visual.py", "line": "22", "type": "constructor", "params": []}, {"id": 4, "name": "DataProcessor.__hidden_method", "filename": "trace_with_visual.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/trace_with_visual.py", "line": "28", "type": "class_method", "params": [{"name": "factor", "value": "3", "type": "int"}]}, {"id": 5, "name": "transform_item", "filename": "trace_with_visual.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/trace_with_visual.py", "line": "18", "type": "function", "params": [{"name": "item", "value": "5", "type": "int"}]}, {"id": 6, "name": "stop_tracing", "filename": "FunctionCallTracer.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/FunctionCallTracer.py", "line": "115", "type": "function", "params": []}, {"id": 7, "name": "DataProcessor.__init__", "filename": "trace_with_visual.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/trace_with_visual.py", "line": "22", "type": "class_method", "params": [{"name": "data", "value": "[1, 2, 3, 4, 5]", "type": "list"}]}, {"id": 8, "name": "<listcomp>", "filename": "trace_with_visual.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/trace_with_visual.py", "line": "29", "type": "function", "params": [{"name": ".0", "value": "<list_iterator ob...", "type": "list_iterator"}, {"name": "factor", "value": "3", "type": "int"}]}, {"id": 9, "name": "__hidden_method", "filename": "trace_with_visual.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/trace_with_visual.py", "line": "28", "type": "private_method", "params": []}, {"id": 10, "name": "process_data", "filename": "trace_with_visual.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/trace_with_visual.py", "line": "11", "type": "function", "params": [{"name": "data_list", "value": "[1, 2, 3, 4, 5]", "type": "list"}]}, {"id": 11, "name": "main_decorated", "filename": "trace_with_visual.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/trace_with_visual.py", "line": "32", "type": "main_method", "params": []}, {"id": 12, "name": "calculate_area", "filename": "trace_with_visual.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/trace_with_visual.py", "line": "8", "type": "function", "params": [{"name": "length", "value": "5", "type": "int"}, {"name": "width", "value": "10", "type": "int"}]}], "links": [{"source": 11, "target": 12}, {"source": 12, "target": 2}, {"source": 2, "target": 3}, {"source": 7, "target": 1}, {"source": 0, "target": 10}, {"source": 10, "target": 5}, {"source": 5, "target": 5}, {"source": 5, "target": 9}, {"source": 4, "target": 8}, {"source": 8, "target": 6}]};
+        const graphData = {"nodes": [{"id": 0, "name": "Process", "filename": "system_trace.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/system_trace.py", "line": "N/A", "type": "class_container", "params": [], "methods": [4, 7], "collapsed": true}, {"id": 1, "name": "FunctionCallTracer", "filename": "FunctionCallTracer.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/FunctionCallTracer.py", "line": "N/A", "type": "class_container", "params": [], "methods": [9], "collapsed": true}, {"id": 2, "name": "_test_method", "filename": "system_trace.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/system_trace.py", "line": "41", "type": "function", "params": [{"name": "int", "value": "5", "type": "int"}], "parent_class": null}, {"id": 3, "name": "transform_item", "filename": "system_trace.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/system_trace.py", "line": "54", "type": "function", "params": [{"name": "item", "value": "5", "type": "int"}], "parent_class": null}, {"id": 4, "name": "__init__", "filename": "system_trace.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/system_trace.py", "line": "58", "type": "constructor", "params": [{"name": "data_list", "value": "[1, 2, 3, 4, 5]", "type": "list"}], "parent_class": "Process"}, {"id": 5, "name": "__iner_method", "filename": "system_trace.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/system_trace.py", "line": "45", "type": "private_method", "params": [{"name": "length", "value": "5", "type": "int"}, {"name": "width", "value": "10", "type": "int"}], "parent_class": null}, {"id": 6, "name": "calculate_area", "filename": "system_trace.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/system_trace.py", "line": "50", "type": "function", "params": [{"name": "length", "value": "5", "type": "int"}, {"name": "width", "value": "10", "type": "int"}], "parent_class": null}, {"id": 7, "name": "process_data", "filename": "system_trace.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/system_trace.py", "line": "61", "type": "class_method", "params": [], "parent_class": "Process"}, {"id": 8, "name": "random_method", "filename": "system_trace.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/system_trace.py", "line": "38", "type": "function", "params": [{"name": "int", "value": "5", "type": "int"}], "parent_class": null}, {"id": 9, "name": "stop_tracing", "filename": "FunctionCallTracer.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/FunctionCallTracer.py", "line": "134", "type": "class_method", "params": [], "parent_class": "FunctionCallTracer"}, {"id": 10, "name": "main", "filename": "system_trace.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/system_trace.py", "line": "69", "type": "main_method", "params": [], "parent_class": null}], "links": [{"source": 10, "target": 6}, {"source": 6, "target": 5}, {"source": 5, "target": 2}, {"source": 2, "target": 8}, {"source": 8, "target": 4}, {"source": 4, "target": 7}, {"source": 7, "target": 3}, {"source": 3, "target": 3}, {"source": 3, "target": 9}]};
         
         // Color mapping by node type
         const colorMap = {
@@ -187,7 +222,8 @@
             function: "#34a853", 
             private_method: "#fbbc05",
             constructor: "#ea4335",
-            class_method: "#9334e6"
+            class_method: "#9334e6",
+            class_container: "#673ab7"
         };
         
         // Set up the SVG
@@ -234,33 +270,73 @@
             .attr("d", "M0,-5L10,0L0,5")
             .attr("fill", "#999");
         
-        // Create nodes
+        // Create nodes with proper formatting
         const node = g.append("g")
             .selectAll(".node")
             .data(graphData.nodes)
             .enter()
             .append("g")
-            .attr("class", "node")
+            .attr("class", d => `node ${d.type}`)
+            .attr("data-collapsed", d => d.collapsed)
             .call(d3.drag()
                 .on("start", dragstarted)
                 .on("drag", dragged)
                 .on("end", dragended))
-            .on("click", showFunctionDetails);
+            .on("click", handleNodeClick);
         
-        // Add circles to nodes
-        node.append("circle")
-            .attr("r", 10)
-            .attr("fill", d => colorMap[d.type])
-            .attr("stroke", d => d3.rgb(colorMap[d.type]).darker(0.5));
+        // Add appropriate shape to nodes
+        node.each(function(d) {
+            const nodeElement = d3.select(this);
+            
+            if (d.type === "class_container") {
+                // Use rectangles for class containers
+                nodeElement.append("rect")
+                    .attr("width", 20)
+                    .attr("height", 20)
+                    .attr("rx", 4)
+                    .attr("ry", 4)
+                    .attr("x", -10)
+                    .attr("y", -10)
+                    .attr("fill", colorMap[d.type])
+                    .attr("stroke", d3.rgb(colorMap[d.type]).darker(0.5))
+                    .attr("stroke-width", 2);
+                
+                // Add a + symbol for collapsed class
+                nodeElement.append("text")
+                    .attr("class", "expand-icon")
+                    .attr("text-anchor", "middle")
+                    .attr("dominant-baseline", "central")
+                    .attr("font-size", 12)
+                    .attr("font-weight", "bold")
+                    .attr("fill", "white")
+                    .text("+");
+            } else {
+                // Use circles for functions and methods
+                nodeElement.append("circle")
+                    .attr("r", 10)
+                    .attr("fill", d => colorMap[d.type])
+                    .attr("stroke", d => d3.rgb(colorMap[d.type]).darker(0.5))
+                    .attr("stroke-width", 2);
+            }
+        });
         
         // Add labels to nodes
         node.append("text")
             .attr("dx", 15)
             .attr("dy", 5)
-            .text(d => d.name + "()");
-        
+            .text(d => {
+                if (d.type === "class_container") {
+                    return `Class ${d.name}`;
+                } else {
+                    return d.name + "()";
+                }
+            });
+            
         // Tooltip
         const tooltip = d3.select("#tooltip");
+        
+        // Initialize visibility
+        initializeVisibility();
         
         node.on("mouseover", function(event, d) {
             // Show tooltip
@@ -318,39 +394,82 @@
             d.fy = null;
         }
         
-        // Reset view button
-        document.getElementById("resetBtn").addEventListener("click", () => {
-            svg.transition().duration(750).call(
-                d3.zoom().transform,
-                d3.zoomIdentity
-            );
-            
-            // Reset node highlighting
-            node.style("opacity", 1);
-            link.style("opacity", 0.6);
-            node.selectAll("circle").attr("r", 10).attr("stroke-width", 2);
-            link.attr("stroke-width", 1.5);
-            
-            // Hide function details
-            document.getElementById("functionDetails").style.display = "none";
-        });
+        // Handle node clicks
+        function handleNodeClick(event, d) {
+            if (d.type === "class_container") {
+                // Toggle class expansion/collapse
+                toggleClassNode(d);
+            } else {
+                // Show function details for regular nodes
+                showFunctionDetails(event, d);
+            }
+        }
         
-        // Search functionality
-        document.getElementById("searchInput").addEventListener("input", function() {
-            const searchTerm = this.value.toLowerCase();
+        // Toggle class expansion/collapse
+        function toggleClassNode(classNode) {
+            // Toggle collapsed state
+            classNode.collapsed = !classNode.collapsed;
             
-            node.each(function(d) {
-                const nodeElement = d3.select(this);
-                const isMatch = d.name.toLowerCase().includes(searchTerm) ||
-                               d.filename.toLowerCase().includes(searchTerm);
+            // Update the visual icon
+            const nodeElement = node.filter(n => n.id === classNode.id);
+            nodeElement.select(".expand-icon").text(classNode.collapsed ? "+" : "-");
+            nodeElement.attr("data-collapsed", classNode.collapsed);
+            
+            // Get all method nodes for this class
+            const methodNodes = classNode.methods;
+            
+            // Update visibility of class methods and their connections
+            if (classNode.collapsed) {
+                // Hide all method nodes
+                node.filter(n => n.parent_class === classNode.name)
+                    .style("display", "none");
                 
-                nodeElement.style("opacity", isMatch || searchTerm === "" ? 1 : 0.2);
-            });
-            
-            link.style("opacity", searchTerm === "" ? 0.6 : 0.1);
-        });
+                // Hide links to/from these methods
+                link.filter(l => {
+                    const sourceNode = graphData.nodes[l.source.id];
+                    const targetNode = graphData.nodes[l.target.id];
+                    return sourceNode.parent_class === classNode.name || 
+                           targetNode.parent_class === classNode.name;
+                }).style("display", "none");
+            } else {
+                // Show all method nodes
+                node.filter(n => n.parent_class === classNode.name)
+                    .style("display", "");
+                
+                // Show links to/from these methods
+                link.filter(l => {
+                    const sourceNode = graphData.nodes[l.source.id];
+                    const targetNode = graphData.nodes[l.target.id];
+                    return sourceNode.parent_class === classNode.name || 
+                           targetNode.parent_class === classNode.name;
+                }).style("display", "");
+                
+                // Re-run simulation to update layout
+                simulation.alpha(0.3).restart();
+            }
+        }
         
-        // Show function details
+        // Initialize visibility based on collapsed state
+        function initializeVisibility() {
+            // Hide all nodes and links for collapsed classes
+            graphData.nodes.forEach(n => {
+                if (n.type === "class_container" && n.collapsed) {
+                    // Hide all method nodes for this class
+                    node.filter(d => d.parent_class === n.name)
+                        .style("display", "none");
+                    
+                    // Hide links to/from these methods
+                    link.filter(l => {
+                        const sourceNode = graphData.nodes[l.source.id];
+                        const targetNode = graphData.nodes[l.target.id];
+                        return sourceNode.parent_class === n.name || 
+                               targetNode.parent_class === n.name;
+                    }).style("display", "none");
+                }
+            });
+        }
+        
+        // Show function details for regular nodes
         function showFunctionDetails(event, d) {
             const detailsDiv = document.getElementById("functionDetails");
             const fnTitle = document.getElementById("selectedFunction");
@@ -361,26 +480,38 @@
             paramsTable.innerHTML = "";
             
             // Update details
-            fnTitle.textContent = d.name + "()";
-            fileInfo.textContent = "File: " + d.filepath + ":" + d.line;
-            
-            // Add parameters
-            if (d.params.length > 0) {
-                d.params.forEach(param => {
-                    const row = paramsTable.insertRow();
-                    const nameCell = row.insertCell(0);
-                    const valueCell = row.insertCell(1);
-                    const typeCell = row.insertCell(2);
-                    
-                    nameCell.textContent = param.name;
-                    valueCell.textContent = param.value;
-                    typeCell.textContent = param.type;
-                });
-            } else {
+            if (d.type === "class_container") {
+                fnTitle.textContent = `Class: ${d.name}`;
+                fileInfo.textContent = `File: ${d.filepath}`;
+                
                 const row = paramsTable.insertRow();
                 const cell = row.insertCell(0);
                 cell.colSpan = 3;
-                cell.textContent = "No parameters";
+                cell.textContent = `Contains ${d.methods.length} methods`;
+            } else {
+                // Format function name with class if applicable
+                const displayName = d.parent_class ? `${d.parent_class}.${d.name}` : d.name;
+                fnTitle.textContent = displayName + "()";
+                fileInfo.textContent = "File: " + d.filepath + ":" + d.line;
+                
+                // Add parameters
+                if (d.params.length > 0) {
+                    d.params.forEach(param => {
+                        const row = paramsTable.insertRow();
+                        const nameCell = row.insertCell(0);
+                        const valueCell = row.insertCell(1);
+                        const typeCell = row.insertCell(2);
+                        
+                        nameCell.textContent = param.name;
+                        valueCell.textContent = param.value;
+                        typeCell.textContent = param.type;
+                    });
+                } else {
+                    const row = paramsTable.insertRow();
+                    const cell = row.insertCell(0);
+                    cell.colSpan = 3;
+                    cell.textContent = "No parameters";
+                }
             }
             
             // Show details div
@@ -393,35 +524,98 @@
         function highlightConnections(selectedNode) {
             // Reset previous highlight
             node.selectAll("circle").attr("r", 10);
+            node.selectAll("rect")
+                .attr("width", 20)
+                .attr("height", 20)
+                .attr("x", -10)
+                .attr("y", -10);
             
             // Find connected nodes
             const linkedNodeIds = new Set();
             
-            // Find outgoing connections
-            graphData.links.forEach(link => {
-                if (link.source.id === selectedNode.id) {
-                    linkedNodeIds.add(link.target.id);
+            // For class containers, consider all methods as "connected"
+            if (selectedNode.type === "class_container") {
+                selectedNode.methods.forEach(methodId => {
+                    linkedNodeIds.add(methodId);
+                });
+                
+                // Also find connections to/from class methods
+                graphData.links.forEach(link => {
+                    const sourceNode = graphData.nodes[link.source.id];
+                    const targetNode = graphData.nodes[link.target.id];
+                    
+                    if (sourceNode.parent_class === selectedNode.name && !linkedNodeIds.has(link.target.id)) {
+                        linkedNodeIds.add(link.target.id);
+                    }
+                    
+                    if (targetNode.parent_class === selectedNode.name && !linkedNodeIds.has(link.source.id)) {
+                        linkedNodeIds.add(link.source.id);
+                    }
+                });
+            } else {
+                // Regular node connections
+                
+                // If this is a class method, also highlight the class container
+                if (selectedNode.parent_class) {
+                    // Find class container node
+                    const classNode = graphData.nodes.find(n => 
+                        n.type === "class_container" && n.name === selectedNode.parent_class);
+                    
+                    if (classNode) {
+                        linkedNodeIds.add(classNode.id);
+                    }
                 }
-            });
-            
-            // Find incoming connections
-            graphData.links.forEach(link => {
-                if (link.target.id === selectedNode.id) {
-                    linkedNodeIds.add(link.source.id);
-                }
-            });
+                
+                // Find outgoing connections
+                graphData.links.forEach(link => {
+                    if (link.source.id === selectedNode.id) {
+                        linkedNodeIds.add(link.target.id);
+                    }
+                });
+                
+                // Find incoming connections
+                graphData.links.forEach(link => {
+                    if (link.target.id === selectedNode.id) {
+                        linkedNodeIds.add(link.source.id);
+                    }
+                });
+            }
             
             // Highlight selected node
-            node.filter(d => d.id === selectedNode.id)
-                .select("circle")
-                .attr("r", 15)
-                .attr("stroke-width", 3);
+            if (selectedNode.type === "class_container") {
+                // Enlarge rectangle for selected class
+                node.filter(d => d.id === selectedNode.id)
+                    .select("rect")
+                    .attr("width", 26)
+                    .attr("height", 26)
+                    .attr("x", -13)
+                    .attr("y", -13)
+                    .attr("stroke-width", 3);
+            } else {
+                // Enlarge circle for selected function/method
+                node.filter(d => d.id === selectedNode.id)
+                    .select("circle")
+                    .attr("r", 15)
+                    .attr("stroke-width", 3);
+            }
             
             // Highlight connected nodes
-            node.filter(d => linkedNodeIds.has(d.id))
-                .select("circle")
-                .attr("r", 12)
-                .attr("stroke-width", 2);
+            node.filter(d => linkedNodeIds.has(d.id)).each(function(d) {
+                const element = d3.select(this);
+                
+                if (d.type === "class_container") {
+                    element.select("rect")
+                        .attr("width", 24)
+                        .attr("height", 24)
+                        .attr("x", -12)
+                        .attr("y", -12)
+                        .attr("stroke-width", 2.5);
+                } else {
+                    element.select("circle")
+                        .attr("r", 12)
+                        .attr("stroke-width", 2.5);
+                }
+            });
             
             // Highlight relevant links
             link.attr("stroke-width", d => 
@@ -429,16 +623,154 @@
                     ? 3 : 1.5
             );
             
-            // Adjust opacity
-            node.style("opacity", d => 
-                d.id === selectedNode.id || linkedNodeIds.has(d.id) ? 1 : 0.3
+            // Adjust opacity for nodes
+            node.style("opacity", d => {
+                // Keep class containers and their methods visible if expanded
+                if (selectedNode.type === "class_container" && !selectedNode.collapsed) {
+                    if (d.id === selectedNode.id || linkedNodeIds.has(d.id) || d.parent_class === selectedNode.name) {
+                        return 1;
+                    }
+                }
+                
+                return (d.id === selectedNode.id || linkedNodeIds.has(d.id)) ? 1 : 0.3;
+            });
+            
+            // Adjust opacity for links
+            link.style("opacity", d => {
+                // For class containers, keep links to/from methods visible
+                if (selectedNode.type === "class_container") {
+                    const sourceNode = graphData.nodes[d.source.id];
+                    const targetNode = graphData.nodes[d.target.id];
+                    
+                    if (sourceNode.parent_class === selectedNode.name || 
+                        targetNode.parent_class === selectedNode.name) {
+                        return 1;
+                    }
+                }
+                
+                return (d.source.id === selectedNode.id || d.target.id === selectedNode.id) ? 1 : 0.1;
+            });
+        }
+        
+        // Reset view button
+        document.getElementById("resetBtn").addEventListener("click", () => {
+            svg.transition().duration(750).call(
+                d3.zoom().transform,
+                d3.zoomIdentity
             );
             
-            link.style("opacity", d => 
-                (d.source.id === selectedNode.id || d.target.id === selectedNode.id)
-                    ? 1 : 0.1
-            );
+            // Reset node highlighting
+            node.style("opacity", 1);
+            link.style("opacity", 0.6);
+            
+            node.filter(d => d.type === "class_container").each(function(d) {
+                const element = d3.select(this);
+                element.select("rect")
+                    .attr("width", 20)
+                    .attr("height", 20)
+                    .attr("x", -10)
+                    .attr("y", -10)
+                    .attr("stroke-width", 2);
+            });
+            
+            node.filter(d => d.type !== "class_container").each(function(d) {
+                const element = d3.select(this);
+                element.select("circle")
+                    .attr("r", 10)
+                    .attr("stroke-width", 2);
+            });
+            
+            link.attr("stroke-width", 1.5);
+            
+            // Show all nodes
+            expandAllClasses();
+            
+            // Hide function details
+            document.getElementById("functionDetails").style.display = "none";
+        });
+        
+        // Expand/collapse all classes functions
+        function expandAllClasses() {
+            graphData.nodes.forEach(node => {
+                if (node.type === "class_container" && node.collapsed) {
+                    toggleClassNode(node);
+                }
+            });
         }
+        
+        function collapseAllClasses() {
+            graphData.nodes.forEach(node => {
+                if (node.type === "class_container" && !node.collapsed) {
+                    toggleClassNode(node);
+                }
+            });
+        }
+        
+        // Search functionality
+        document.getElementById("searchInput").addEventListener("input", function() {
+            const searchTerm = this.value.toLowerCase();
+            
+            // Reset function details if search changes
+            document.getElementById("functionDetails").style.display = "none";
+            
+            if (searchTerm === "") {
+                // If search is cleared, reset all visibility
+                node.style("opacity", 1);
+                link.style("opacity", 0.6);
+                
+                // Restore collapsed/expanded state
+                initializeVisibility();
+                return;
+            }
+            
+            // Find matching nodes
+            const matchingNodes = new Set();
+            
+            graphData.nodes.forEach(n => {
+                const name = n.name.toLowerCase();
+                const filename = n.filename.toLowerCase();
+                
+                if (name.includes(searchTerm) || filename.includes(searchTerm)) {
+                    matchingNodes.add(n.id);
+                    
+                    // For class methods, include their class container
+                    if (n.parent_class) {
+                        const classNode = graphData.nodes.find(c => 
+                            c.type === "class_container" && c.name === n.parent_class);
+                        if (classNode) {
+                            matchingNodes.add(classNode.id);
+                        }
+                    }
+                    
+                    // For class containers, include all their methods
+                    if (n.type === "class_container") {
+                        n.methods.forEach(methodId => {
+                            matchingNodes.add(methodId);
+                        });
+                    }
+                }
+            });
+            
+            // Show matching nodes, dim others
+            node.style("opacity", d => matchingNodes.has(d.id) ? 1 : 0.2);
+            
+            // Show links between matching nodes, dim others
+            link.style("opacity", d => 
+                (matchingNodes.has(d.source.id) && matchingNodes.has(d.target.id)) ? 0.8 : 0.1
+            );
+            
+            // Make sure all matching nodes from classes are visible
+            graphData.nodes.forEach(n => {
+                if (n.type === "class_container" && matchingNodes.has(n.id) && n.collapsed) {
+                    // Auto-expand class if it matches search
+                    toggleClassNode(n);
+                }
+            });
+        });
+        
+        // Add event listeners for expand/collapse all
+        document.getElementById("expandAllBtn").addEventListener("click", expandAllClasses);
+        document.getElementById("collapseAllBtn").addEventListener("click", collapseAllClasses);
     </script>
 </body>
 </html>
