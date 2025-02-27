@@ -74,26 +74,17 @@ class FunctionCallTracer:
         if not self.entry_point and not parent:
             self.entry_point = func_id
         
-        # Store relationship
-        if parent:
-            if parent not in self.call_graph:
-                self.call_graph[parent] = []
-            if func_id not in self.call_graph[parent]:
-                self.call_graph[parent].append(func_id)
-        
-        # Store function details (parameters)
-        locals_dict = frame.f_locals.copy()  # Make a copy to avoid reference issues
-        
-        # Improved class method detection
+        # Enhanced class method detection
         class_name = None
         
         # Check if this is a class method (has self parameter)
-        if 'self' in locals_dict:
+        if 'self' in frame.f_locals:
             try:
                 # Get class name from self's class
-                class_name = locals_dict['self'].__class__.__name__
+                instance = frame.f_locals['self']
+                class_name = instance.__class__.__name__
                 
-                # Create a better identifier that includes class name
+                # Create an identifier that includes class name
                 class_func_id = f"{func_filename}:{class_name}.{func_name}:{line_no}"
                 
                 # Replace the original ID with the class-aware ID
@@ -109,10 +100,42 @@ class FunctionCallTracer:
                 # In case self doesn't have a __class__ attribute or other issues
                 pass
         
+        # Special handling for __init__ to associate it with the class
+        elif func_name == "__init__":
+            # Try to find the class name by inspecting the code
+            try:
+                # Get the class name from the code context
+                if hasattr(frame, 'f_back') and frame.f_back:
+                    back_code = frame.f_back.f_code
+                    if back_code.co_name == '__new__' or back_code.co_name == 'type':
+                        for key, val in frame.f_back.f_locals.items():
+                            if isinstance(val, type) and val.__name__ not in ('type', 'object'):
+                                class_name = val.__name__
+                                class_func_id = f"{func_filename}:{class_name}.{func_name}:{line_no}"
+                                func_id = class_func_id
+                                break
+            except Exception:
+                # Fall back to standard handling if we can't identify the class
+                pass
+        
+        # Store relationship
+        if parent:
+            if parent not in self.call_graph:
+                self.call_graph[parent] = []
+            if func_id not in self.call_graph[parent]:
+                self.call_graph[parent].append(func_id)
+        
+        # Store function details (parameters)
+        locals_dict = frame.f_locals.copy()  # Make a copy to avoid reference issues
+        
         # Store parameters (excluding self)
         params = {name: (repr(val), type(val).__name__) 
                 for name, val in locals_dict.items()
                 if name != 'self'}  # Skip 'self' for class methods
+        
+        # Store class info in the parameters if available
+        if class_name:
+            params['__class_name__'] = (class_name, 'class')
         
         self.func_params[func_id] = params
         
@@ -712,6 +735,9 @@ class FunctionVisualizer:
             .text(d => {
                 if (d.type === "class_container") {
                     return `Class ${d.name}`;
+                } else if (d.parent_class) {
+                    // For class methods, show ClassName.MethodName format
+                    return `${d.parent_class}.${d.name}()`;
                 } else {
                     return d.name + "()";
                 }
@@ -728,8 +754,14 @@ class FunctionVisualizer:
             tooltip.transition().duration(200).style("opacity", .9);
             
             // Create tooltip content
-            let tooltipContent = `<strong>${d.name}()</strong><br/>`;
-            tooltipContent += `File: ${d.filename}:${d.line}<br/>`;
+            let tooltipContent = "";
+            if (d.type === "class_container") {
+                tooltipContent = `<strong>Class ${d.name}</strong><br/>`;
+            } else if (d.parent_class) {
+                tooltipContent = `<strong>${d.parent_class}.${d.name}()</strong><br/>`;
+            } else {
+                tooltipContent = `<strong>${d.name}()</strong><br/>`;
+            }
             
             if (d.params.length > 0) {
                 tooltipContent += `<strong>Parameters:</strong><br/>`;

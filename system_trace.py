@@ -64,6 +64,17 @@ class Process:
             processed = transform_item(item)
             result.append(processed)
         return result
+    
+class StaticProcess:
+    def __init__(self, data_list):
+        self._data_list = data_list
+
+    def process_data(self):
+        result = []
+        for item in self._data_list:
+            processed = transform_item(item)
+            result.append(processed)
+        return result
 
 # Main execution
 @trace_and_visualize
