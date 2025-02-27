@@ -363,8 +363,8 @@ class FunctionVisualizer:
             if node_id in tracer.func_params:
                 for name, (value, type_name) in tracer.func_params[node_id].items():
                     # Truncate long values
-                    if len(value) > 20:
-                        value = value[:17] + "..."
+                    # if len(value) > 20:
+                    #     value = value[:17] + "..."
                     params.append({"name": name, "value": value, "type": type_name})
             
             # Skip if this is a class method (we'll handle these differently)
