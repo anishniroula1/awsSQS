@@ -76,29 +76,66 @@ class FunctionCallTracer:
         
         # Enhanced class method detection
         class_name = None
+        is_mock = False
         
-        # Check if this is a class method (has self parameter)
+        # Check if this is a call to a mock object
         if 'self' in frame.f_locals:
-            try:
-                # Get class name from self's class
-                instance = frame.f_locals['self']
-                class_name = instance.__class__.__name__
+            instance = frame.f_locals['self']
+            
+            # Check for mock objects
+            mock_module_names = ['unittest.mock', 'mock']
+            instance_module = getattr(instance.__class__, '__module__', '')
+            
+            if instance_module in mock_module_names or hasattr(instance, '_mock_name'):
+                is_mock = True
                 
-                # Create an identifier that includes class name
-                class_func_id = f"{func_filename}:{class_name}.{func_name}:{line_no}"
-                
-                # Replace the original ID with the class-aware ID
-                if parent and parent in self.call_graph:
-                    # Update the parent's children list if needed
-                    for i, child in enumerate(self.call_graph[parent]):
-                        if child == func_id:
-                            self.call_graph[parent][i] = class_func_id
-                
-                # Use the new ID for this function
-                func_id = class_func_id
-            except (AttributeError, TypeError):
-                # In case self doesn't have a __class__ attribute or other issues
-                pass
+                # Try to get the original function/method being mocked
+                try:
+                    if hasattr(instance, '_mock_wraps') and instance._mock_wraps:
+                        # Get the original function if it's wrapped
+                        original_func = instance._mock_wraps
+                        if hasattr(original_func, '__self__'):
+                            # It's a bound method
+                            class_name = original_func.__self__.__class__.__name__
+                            mocked_func_name = original_func.__name__
+                            func_name = f"{class_name}.{mocked_func_name}"
+                        else:
+                            # It's a function
+                            func_name = original_func.__name__
+                        
+                        # Update the identifier
+                        func_id = f"{func_filename}:{func_name}:{line_no} (mocked)"
+                    elif hasattr(instance, '_mock_name') and instance._mock_name:
+                        # If wrapped function isn't available, use the mock name
+                        if '.' in instance._mock_name:
+                            func_name = instance._mock_name
+                        else:
+                            func_name = f"{func_name} ({instance._mock_name})"
+                        func_id = f"{func_filename}:{func_name}:{line_no} (mocked)"
+                except Exception:
+                    # Fall back to standard handling if mock introspection fails
+                    pass
+            else:
+                # Regular class method detection (not a mock)
+                try:
+                    # Get class name from self's class
+                    class_name = instance.__class__.__name__
+                    
+                    # Create an identifier that includes class name
+                    class_func_id = f"{func_filename}:{class_name}.{func_name}:{line_no}"
+                    
+                    # Replace the original ID with the class-aware ID
+                    if parent and parent in self.call_graph:
+                        # Update the parent's children list if needed
+                        for i, child in enumerate(self.call_graph[parent]):
+                            if child == func_id:
+                                self.call_graph[parent][i] = class_func_id
+                    
+                    # Use the new ID for this function
+                    func_id = class_func_id
+                except (AttributeError, TypeError):
+                    # In case self doesn't have a __class__ attribute or other issues
+                    pass
         
         # Special handling for __init__ to associate it with the class
         elif func_name == "__init__":
@@ -107,7 +144,7 @@ class FunctionCallTracer:
                 # Get the class name from the code context
                 if hasattr(frame, 'f_back') and frame.f_back:
                     back_code = frame.f_back.f_code
-                    if back_code.co_name == '__new__' or back_code.co_name == 'type':
+                    if back_code.co_name in ('__new__', 'type', '_call_'):
                         for key, val in frame.f_back.f_locals.items():
                             if isinstance(val, type) and val.__name__ not in ('type', 'object'):
                                 class_name = val.__name__
@@ -128,6 +165,15 @@ class FunctionCallTracer:
         # Store function details (parameters)
         locals_dict = frame.f_locals.copy()  # Make a copy to avoid reference issues
         
+        # Handle mock object side effects
+        if is_mock and 'self' in locals_dict:
+            instance = locals_dict['self']
+            if hasattr(instance, 'side_effect') and callable(instance.side_effect):
+                # Track the side_effect function as well
+                side_effect_func = instance.side_effect
+                if hasattr(side_effect_func, '__name__'):
+                    locals_dict['__side_effect__'] = side_effect_func.__name__
+        
         # Store parameters (excluding self)
         params = {name: (repr(val), type(val).__name__) 
                 for name, val in locals_dict.items()
@@ -137,13 +183,16 @@ class FunctionCallTracer:
         if class_name:
             params['__class_name__'] = (class_name, 'class')
         
+        # Store mock info if available
+        if is_mock:
+            params['__is_mock__'] = ('True', 'bool')
+        
         self.func_params[func_id] = params
         
         # Update stack
         self.current_stack.append(func_id)
         
         return self.trace_calls
-    
     def trace_returns(self, frame, event, arg):
         """Trace function returns to maintain the stack."""
         if event == 'return' and self.current_stack:
