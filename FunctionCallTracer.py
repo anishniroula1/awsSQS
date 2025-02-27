@@ -37,13 +37,35 @@ class FunctionCallTracer:
         if not filename or filename == '<string>':
             return False
             
-        # Skip standard library if configured
+        # Skip standard library
         if not self.include_stdlib:
             for excluded in self.excluded_paths:
                 if excluded and filename.startswith(excluded):
                     return False
         
-        return True
+        # Skip other libraries in site-packages or dist-packages
+        if 'site-packages' in filename or 'dist-packages' in filename:
+            return False
+        
+        # Skip Python standard library
+        if filename.startswith(sys.prefix):
+            return False
+        
+        # Only trace files from the application path
+        app_path = os.path.dirname(os.path.abspath(sys.argv[0]))
+        
+        # If the file is in the application path or its subdirectories
+        if filename.startswith(app_path):
+            return True
+        
+        # Optionally, you can add more application paths to include
+        # For example, the current working directory
+        cwd = os.path.abspath(os.getcwd())
+        if filename.startswith(cwd):
+            return True
+            
+        # If none of the above, don't trace it
+        return False
     
     def trace_calls(self, frame, event, arg):
         """Trace function calls."""
