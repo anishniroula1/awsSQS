@@ -15,8 +15,12 @@ def global_trace(frame, event, arg):
         file_name = frame.f_code.co_filename
         line_no = frame.f_lineno
         
-        # Skip built-in functions and methods
-        if file_name == '<string>' or func_name.startswith('__'):
+        # Skip truly built-in functions, but allow user-defined functions with underscores
+        if file_name == '<string>':
+            return
+        
+        # Only skip double-underscore methods from standard library, not our own
+        if (func_name.startswith('__') and func_name.endswith('__')) or (func_name.startswith('_') and func_name.endswith('_')) and '/usr/' in file_name:
             return
         
         # Get local variables (parameters)
@@ -30,9 +34,20 @@ def global_trace(frame, event, arg):
         
     return global_trace  # Return the function to continue tracing
 
+def random_method(int):
+    print(int)
+
+def _test_method(int):
+    random_method(int)
+    print(int)
+
+def __iner_method(length, width):
+    _test_method(length)
+    return length * width
+
 # Example functions to trace
 def calculate_area(length, width):
-    return length * width
+    return __iner_method(length, width)
 
 def process_data(data_list):
     result = []
