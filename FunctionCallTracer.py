@@ -194,9 +194,9 @@ class FunctionCallTracer:
                 if node in self.func_params and self.func_params[node]:
                     params = []
                     for name, (value, type_name) in self.func_params[node].items():
-                        # Truncate long values
-                        if len(value) > 15:
-                            value = value[:12] + "..."
+                        # # Truncate long values
+                        # if len(value) > 15:
+                        #     value = value[:12] + "..."
                         params.append(f"{name}: {value} ({type_name})")
                     
                     # Format parameters in a readable way
