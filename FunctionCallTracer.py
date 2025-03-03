@@ -14,6 +14,10 @@ class FunctionCallTracer:
         self.excluded_paths = set()  # Paths to exclude
         self.entry_point = None  # Track the first function called
         
+        # Add sequence tracking
+        self.sequence_counter = 0
+        self.call_sequence = {}  # Maps function ID to its call sequence number
+        
         # Create output directory if it doesn't exist
         os.makedirs(output_dir, exist_ok=True)
         
@@ -207,6 +211,11 @@ class FunctionCallTracer:
         if is_mock:
             params['__is_mock__'] = ('True', 'bool')
         
+        # Add sequence number to parameters
+        self.sequence_counter += 1
+        params['__sequence__'] = (str(self.sequence_counter), 'int')
+        self.call_sequence[func_id] = self.sequence_counter
+        
         self.func_params[func_id] = params
         
         # Associate function ID with call frame for return value tracking
@@ -339,8 +348,11 @@ class FunctionCallTracer:
                 clean_func = func.replace('__', '')
                 node_ids[node] = f"func{i}_{clean_func}"
             
-            # Write node definitions with parameters
-            for node in nodes:
+            # Sort nodes by sequence number for sequential display
+            sorted_nodes = sorted(nodes, key=lambda node: self.call_sequence.get(node, float('inf')))
+            
+            # Write node definitions with parameters and sequence numbers
+            for node in sorted_nodes:
                 file, func, line = node.split(':', 2)
                 node_id = node_ids[node]
                 
@@ -350,18 +362,21 @@ class FunctionCallTracer:
                 # Format parameters nicely
                 param_text = ""
                 if node in self.func_params and self.func_params[node]:
+                    # Get sequence number for display
+                    sequence = self.func_params[node].get('__sequence__', ('?', 'int'))[0]
+                    
                     params = []
+                    params.append(f"sequence: {sequence}")
                     for name, (value, type_name) in self.func_params[node].items():
-                        # # Truncate long values
-                        # if len(value) > 15:
-                        #     value = value[:12] + "..."
+                        if name == '__sequence__':
+                            continue  # Skip, already displayed at top
                         params.append(f"{name}: {value} ({type_name})")
                     
                     # Format parameters in a readable way
                     if params:
                         param_text = "<br>" + "<br>".join(params)
                 
-                # Write node with function name and parameters
+                # Write node with function name, sequence number and parameters
                 label = f"{func}(){param_text}"
                 if func != "__init__":  # Add filename for non-constructor methods
                     label = f"{os.path.basename(file)}<br>{label}"
@@ -371,9 +386,17 @@ class FunctionCallTracer:
             # Write edges
             for parent in self.call_graph:
                 parent_id = node_ids[parent]
-                for child in self.call_graph[parent]:
+                
+                # Sort children by sequence number for sequential display
+                sorted_children = sorted(self.call_graph[parent], 
+                                         key=lambda child: self.call_sequence.get(child, float('inf')))
+                
+                for child in sorted_children:
                     child_id = node_ids[child]
-                    f.write(f"    {parent_id} --> {child_id}\n")
+                    # Get sequence numbers for edge labels
+                    parent_seq = self.call_sequence.get(parent, '?')
+                    child_seq = self.call_sequence.get(child, '?')
+                    f.write(f"    {parent_id} -->|{parent_seq}->{child_seq}| {child_id}\n")
             
             # Add better styling
             f.write("\n    %% Styling\n")
@@ -468,7 +491,8 @@ class FunctionVisualizer:
                 "type": "class_container",
                 "params": {},
                 "methods": [],  # Will store indices of method nodes
-                "collapsed": True  # Initially collapsed
+                "collapsed": True,  # Initially collapsed
+                "sequence": float('inf')  # Default to high number, will set to min of methods
             }
             
             nodes.append(class_node)
@@ -521,11 +545,18 @@ class FunctionVisualizer:
             if node_id in tracer.func_params:
                 params = tracer.func_params[node_id]
             
-            # Skip if this is a class method (we'll handle these differently)
-            if parent_class:
-                # Store which methods belong to which class
+            # Get sequence number
+            sequence = float('inf')
+            if node_id in tracer.call_sequence:
+                sequence = tracer.call_sequence[node_id]
+            elif "__sequence__" in params:
+                sequence = int(params["__sequence__"][0])
+                
+            # If this is a class method, update the class's sequence to the earliest method call
+            if parent_class and class_name in class_nodes:
                 class_node_idx = class_nodes[parent_class]
-                nodes[class_node_idx]["methods"].append(node_index)
+                if sequence < nodes[class_node_idx]["sequence"]:
+                    nodes[class_node_idx]["sequence"] = sequence
             
             # Create node
             node = {
@@ -536,8 +567,15 @@ class FunctionVisualizer:
                 "line": line_no,
                 "type": node_type,
                 "params": params,
-                "parent_class": parent_class  # Reference to parent class if applicable
+                "parent_class": parent_class,  # Reference to parent class if applicable
+                "sequence": sequence  # Add sequence number to node
             }
+            
+            # Skip if this is a class method (we'll handle these differently)
+            if parent_class:
+                # Store which methods belong to which class
+                class_node_idx = class_nodes[parent_class]
+                nodes[class_node_idx]["methods"].append(node_index)
             
             nodes.append(node)
             node_map[node_id] = node_index
@@ -547,9 +585,13 @@ class FunctionVisualizer:
         for parent in tracer.call_graph:
             for child in tracer.call_graph[parent]:
                 if parent in node_map and child in node_map:
+                    parent_seq = tracer.call_sequence.get(parent, float('inf'))
+                    child_seq = tracer.call_sequence.get(child, float('inf'))
                     links.append({
                         "source": node_map[parent],
-                        "target": node_map[child]
+                        "target": node_map[child],
+                        "sourceSeq": parent_seq,
+                        "targetSeq": child_seq
                     })
         
         # Prepare JSON data for D3
@@ -632,6 +674,10 @@ class FunctionVisualizer:
             stroke-width: 1.5px;
             fill: none;
         }
+        .sequence-label {
+            font-size: 10px;
+            fill: #666;
+        }
         .controls {
             margin-bottom: 20px;
             display: flex;
@@ -676,6 +722,12 @@ class FunctionVisualizer:
         }
         #verticalLayoutBtn:hover {
             background-color: #d62516;
+        }
+        #sequentialLayoutBtn {
+            background-color: #9334e6;
+        }
+        #sequentialLayoutBtn:hover {
+            background-color: #7a20c7;
         }
         .legend {
             display: flex;
@@ -760,6 +812,20 @@ class FunctionVisualizer:
             border-left: 3px solid #4285f4;
             margin-top: 5px;
         }
+        
+        /* Sequence number badge */
+        .sequence-badge {
+            display: inline-block;
+            background: #666;
+            color: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            text-align: center;
+            line-height: 20px;
+            margin-right: 5px;
+            font-size: 11px;
+        }
     </style>
 </head>
 <body>
@@ -772,6 +838,7 @@ class FunctionVisualizer:
                 <button id="expandAllBtn">Expand All Classes</button>
                 <button id="collapseAllBtn">Collapse All Classes</button>
                 <button id="verticalLayoutBtn">Vertical Layout</button>
+                <button id="sequentialLayoutBtn">Sequential Layout</button>
             </div>
             <div>
                 <label for="searchInput">Search: </label>
@@ -811,6 +878,7 @@ class FunctionVisualizer:
         <div id="functionDetails" class="function-details">
             <h3 id="selectedFunction">Function Details</h3>
             <p id="fileInfo">File: </p>
+            <p id="sequenceInfo">Sequence: </p>
             <div id="returnValueInfo"></div>
             <div id="exceptionInfo"></div>
             <h4>Parameters:</h4>
@@ -937,21 +1005,54 @@ class FunctionVisualizer:
                         return d3.rgb(colorMap[d.type]).darker(0.5);
                     })
                     .attr("stroke-width", 2);
+                
+                // Add sequence number inside the circle for better visibility
+                if (d.sequence !== Infinity) {
+                    nodeElement.append("text")
+                        .attr("class", "sequence-number")
+                        .attr("text-anchor", "middle")
+                        .attr("dominant-baseline", "central")
+                        .attr("font-size", 8)
+                        .attr("font-weight", "bold")
+                        .attr("fill", "white")
+                        .text(d.sequence);
+                }
             }
         });
         
-        // Add labels to nodes
+        // Add labels to nodes with sequence numbers
         node.append("text")
             .attr("dx", 15)
             .attr("dy", 5)
             .text(d => {
+                let displayText = "";
                 if (d.type === "class_container") {
-                    return `Class ${d.name}`;
+                    displayText = `Class ${d.name}`;
                 } else if (d.parent_class) {
-                    return `${d.parent_class}.${d.name}()`;
+                    displayText = `${d.parent_class}.${d.name}()`;
                 } else {
-                    return d.name + "()";
+                    displayText = d.name + "()";
                 }
+                
+                // Add sequence number prefix if available and not infinity
+                if (d.sequence !== Infinity) {
+                    displayText = `[${d.sequence}] ${displayText}`;
+                }
+                
+                return displayText;
+            });
+            
+        // Add sequence numbers to links
+        const linkLabels = g.append("g")
+            .selectAll(".link-label")
+            .data(graphData.links)
+            .enter()
+            .append("text")
+            .attr("class", "sequence-label")
+            .attr("text-anchor", "middle")
+            .attr("dy", -5)
+            .text(d => {
+                return `${d.sourceSeq}→${d.targetSeq}`;
             });
             
         // Tooltip
@@ -964,8 +1065,9 @@ class FunctionVisualizer:
             .force("center", d3.forceCenter(width / 2, height / 2))
             .force("collide", d3.forceCollide().radius(50));
             
-        // Flag to track if vertical layout is active
+        // Flags to track layout modes
         let isVerticalLayout = false;
+        let isSequentialLayout = false;
         
         // Initialize the visualization with the force layout
         initForceLayout();
@@ -983,10 +1085,19 @@ class FunctionVisualizer:
             if (d.type === "class_container") {
                 tooltipContent = `<strong>Class ${d.name}</strong><br/>`;
                 tooltipContent += `Contains ${d.methods.length} methods<br/>`;
+                if (d.sequence !== Infinity) {
+                    tooltipContent += `First called at sequence: <strong>${d.sequence}</strong><br/>`;
+                }
             } else if (d.parent_class) {
                 tooltipContent = `<strong>${d.parent_class}.${d.name}()</strong><br/>`;
+                if (d.sequence !== Infinity) {
+                    tooltipContent += `Sequence: <strong>${d.sequence}</strong><br/>`;
+                }
             } else {
                 tooltipContent = `<strong>${d.name}()</strong><br/>`;
+                if (d.sequence !== Infinity) {
+                    tooltipContent += `Sequence: <strong>${d.sequence}</strong><br/>`;
+                }
             }
             
             tooltipContent += `File: ${d.filename}:${d.line}<br/>`;
@@ -1039,20 +1150,28 @@ class FunctionVisualizer:
                          ${target.x},${target.y}`;
             });
             
+            // Update link label positions
+            linkLabels.attr("x", d => (d.source.x + d.target.x) / 2)
+                .attr("y", d => (d.source.y + d.target.y) / 2);
+            
             node.attr("transform", d => `translate(${d.x},${d.y})`);
         });
         
         // Drag functions
         function dragstarted(event, d) {
-            if (!isVerticalLayout && !event.active) simulation.alphaTarget(0.3).restart();
+            if (!isVerticalLayout && !isSequentialLayout && !event.active) simulation.alphaTarget(0.3).restart();
             d.fx = d.x;
             d.fy = d.y;
         }
         
         function dragged(event, d) {
-            if (!isVerticalLayout) {
+            if (!isVerticalLayout && !isSequentialLayout) {
                 // Only allow free dragging in force layout mode
                 d.fx = event.x;
+                d.fy = event.y;
+            } else if (isSequentialLayout) {
+                // In sequential layout, only allow vertical movement
+                d.fx = d.x;
                 d.fy = event.y;
             } else {
                 // In vertical layout, only allow horizontal movement
@@ -1063,9 +1182,9 @@ class FunctionVisualizer:
         }
         
         function dragended(event, d) {
-            if (!isVerticalLayout && !event.active) simulation.alphaTarget(0);
-            // In vertical layout, keep fixed positions
-            if (!isVerticalLayout) {
+            if (!isVerticalLayout && !isSequentialLayout && !event.active) simulation.alphaTarget(0);
+            // In fixed layouts, keep fixed positions
+            if (!isVerticalLayout && !isSequentialLayout) {
                 d.fx = null;
                 d.fy = null;
             }
@@ -1086,6 +1205,10 @@ class FunctionVisualizer:
             simulation.alpha(1).restart();
             
             isVerticalLayout = false;
+            isSequentialLayout = false;
+            
+            // Hide link sequence labels in force layout
+            linkLabels.style("display", "none");
         }
         
         // Function to apply a simple vertical layout
@@ -1138,6 +1261,11 @@ class FunctionVisualizer:
                          ${target.x},${target.y}`;
             });
             
+            // Update link label positions
+            linkLabels.attr("x", d => (d.source.x + d.target.x) / 2)
+                .attr("y", d => (d.source.y + d.target.y) / 2)
+                .style("display", "");
+            
             // Stop the simulation
             simulation.stop();
             
@@ -1161,6 +1289,84 @@ class FunctionVisualizer:
             });
             
             isVerticalLayout = true;
+            isSequentialLayout = false;
+        }
+        
+        // Function to apply a sequential layout based on execution order
+        function applySequentialLayout() {
+            // Sort nodes by sequence number
+            const sortedNodes = [...graphData.nodes].sort((a, b) => {
+                // Handle infinity values - put them at the end
+                if (a.sequence === Infinity && b.sequence === Infinity) return 0;
+                if (a.sequence === Infinity) return 1;
+                if (b.sequence === Infinity) return -1;
+                return a.sequence - b.sequence;
+            });
+            
+            // Position nodes in a sequential horizontal layout
+            const nodeWidth = 120;  // Horizontal space between nodes
+            const leftMargin = 100;
+            const rowHeight = 100;  // Space between rows
+            const nodesPerRow = 5;  // Number of nodes per row
+            
+            // Position nodes in a grid pattern based on sequence
+            sortedNodes.forEach((node, index) => {
+                const row = Math.floor(index / nodesPerRow);
+                const col = index % nodesPerRow;
+                
+                // Position nodes in rows
+                node.x = leftMargin + (col * nodeWidth);
+                node.y = 100 + (row * rowHeight);
+                
+                // Fix node positions
+                node.fx = node.x;
+                node.fy = node.y;
+            });
+            
+            // Update node positions
+            node.attr("transform", d => `translate(${d.x},${d.y})`);
+            
+            // Update links with simple curved paths
+            link.attr("d", d => {
+                const source = graphData.nodes[d.source.id];
+                const target = graphData.nodes[d.target.id];
+                
+                // Create curved paths
+                return `M${source.x},${source.y}
+                        C${source.x},${(source.y + target.y) / 2}
+                         ${target.x},${(source.y + target.y) / 2}
+                         ${target.x},${target.y}`;
+            });
+            
+            // Update link label positions
+            linkLabels.attr("x", d => (d.source.x + d.target.x) / 2)
+                .attr("y", d => (d.source.y + d.target.y) / 2)
+                .style("display", "");
+            
+            // Stop the simulation
+            simulation.stop();
+            
+            // Add white background to text for better readability
+            node.selectAll("text").each(function() {
+                const text = d3.select(this);
+                
+                // Remove any existing backgrounds
+                text.selectAll("rect.text-bg").remove();
+                
+                // Get text dimensions
+                const bbox = text.node().getBBox();
+                
+                // Insert a white background rectangle behind the text
+                text.insert("rect", "text")
+                    .attr("class", "text-bg")
+                    .attr("x", bbox.x - 2)
+                    .attr("y", bbox.y - 2)
+                    .attr("width", bbox.width + 4)
+                    .attr("height", bbox.height + 4);
+            });
+            
+            isVerticalLayout = false;
+            isSequentialLayout = true;
         }
         
         // Handle node clicks
@@ -1200,6 +1406,14 @@ class FunctionVisualizer:
                     return sourceNode.parent_class === classNode.name || 
                            targetNode.parent_class === classNode.name;
                 }).style("display", "none");
+                
+                // Hide link labels
+                linkLabels.filter(l => {
+                    const sourceNode = graphData.nodes[l.source.id];
+                    const targetNode = graphData.nodes[l.target.id];
+                    return sourceNode.parent_class === classNode.name || 
+                           targetNode.parent_class === classNode.name;
+                }).style("display", "none");
             } else {
                 // Show all method nodes
                 node.filter(n => n.parent_class === classNode.name)
@@ -1213,9 +1427,21 @@ class FunctionVisualizer:
                            targetNode.parent_class === classNode.name;
                 }).style("display", "");
                 
+                // Show link labels if in a layout that uses them
+                if (isVerticalLayout || isSequentialLayout) {
+                    linkLabels.filter(l => {
+                        const sourceNode = graphData.nodes[l.source.id];
+                        const targetNode = graphData.nodes[l.target.id];
+                        return sourceNode.parent_class === classNode.name || 
+                               targetNode.parent_class === classNode.name;
+                    }).style("display", "");
+                }
+                
                 // Update the layout accordingly
                 if (isVerticalLayout) {
                     applyVerticalLayout();
+                } else if (isSequentialLayout) {
+                    applySequentialLayout();
                 } else {
                     // Re-run simulation to update layout
                     simulation.alpha(0.3).restart();
@@ -1239,6 +1465,14 @@ class FunctionVisualizer:
                         return sourceNode.parent_class === n.name || 
                                targetNode.parent_class === n.name;
                     }).style("display", "none");
+                    
+                    // Hide link labels
+                    linkLabels.filter(l => {
+                        const sourceNode = graphData.nodes[l.source.id];
+                        const targetNode = graphData.nodes[l.target.id];
+                        return sourceNode.parent_class === n.name || 
+                               targetNode.parent_class === n.name;
+                    }).style("display", "none");
                 }
             });
         }
@@ -1248,6 +1482,7 @@ class FunctionVisualizer:
             const detailsDiv = document.getElementById("functionDetails");
             const fnTitle = document.getElementById("selectedFunction");
             const fileInfo = document.getElementById("fileInfo");
+            const sequenceInfo = document.getElementById("sequenceInfo");
             const returnValueInfo = document.getElementById("returnValueInfo");
             const exceptionInfo = document.getElementById("exceptionInfo");
             const paramsTable = document.getElementById("paramsTable").getElementsByTagName("tbody")[0];
@@ -1261,6 +1496,8 @@ class FunctionVisualizer:
             if (d.type === "class_container") {
                 fnTitle.textContent = `Class: ${d.name}`;
                 fileInfo.textContent = `File: ${d.filepath}`;
+                sequenceInfo.textContent = d.sequence !== Infinity ? 
+                    `First called at sequence: ${d.sequence}` : 'Sequence: Not called directly';
                 
                 const row = paramsTable.insertRow();
                 const cell = row.insertCell(0);
@@ -1271,6 +1508,8 @@ class FunctionVisualizer:
                 const displayName = d.parent_class ? `${d.parent_class}.${d.name}` : d.name;
                 fnTitle.textContent = displayName + "()";
                 fileInfo.textContent = "File: " + d.filepath + ":" + d.line;
+                sequenceInfo.textContent = d.sequence !== Infinity ? 
+                    `Sequence number: ${d.sequence}` : 'Sequence: Not called directly';
                 
                 // Add return value if available
                 if (d.params.__return_value__) {
@@ -1320,7 +1559,7 @@ class FunctionVisualizer:
                         nameCell.textContent = key;
                         valueCell.textContent = value;
                         typeCell.textContent = type;
-                    });
+                        });
                 } else {
                     const row = paramsTable.insertRow();
                     const cell = row.insertCell(0);
@@ -1334,8 +1573,14 @@ class FunctionVisualizer:
             
             // Highlight connected nodes and links
             highlightConnections(d);
+            
+            // Highlight execution sequence
+            if (d.sequence !== Infinity) {
+                highlightSequence(d);
+            }
         }
         
+        // Highlight nodes connected in the call graph
         function highlightConnections(selectedNode) {
             // Reset previous highlight
             node.selectAll("circle").attr("r", 10);
@@ -1465,6 +1710,50 @@ class FunctionVisualizer:
                 
                 return (d.source.id === selectedNode.id || d.target.id === selectedNode.id) ? 1 : 0.1;
             });
+            
+            // Reset link labels opacity
+            linkLabels.style("opacity", 0.6);
+        }
+        
+        // Function to highlight execution sequence
+        function highlightSequence(selectedNode) {
+            // Get the sequence number of the selected node
+            const selectedSeq = selectedNode.sequence;
+            if (selectedSeq === Infinity) return;
+            
+            // Find nodes that were called before and after the selected node
+            const prevNodes = graphData.nodes.filter(n => 
+                n.sequence !== Infinity && n.sequence < selectedSeq);
+            
+            const nextNodes = graphData.nodes.filter(n => 
+                n.sequence !== Infinity && n.sequence > selectedSeq);
+            
+            // Create sequence groups
+            const prevNodeIds = new Set(prevNodes.map(n => n.id));
+            const nextNodeIds = new Set(nextNodes.map(n => n.id));
+            
+            // Adjust node styling to show sequence
+            node.style("opacity", d => {
+                if (d.id === selectedNode.id) return 1; // Selected node full opacity
+                if (d.sequence === Infinity) return 0.2; // Non-sequenced nodes very dim
+                if (prevNodeIds.has(d.id)) return 0.7; // Previous nodes medium opacity
+                if (nextNodeIds.has(d.id)) return 0.5; // Next nodes lower opacity
+                return 0.2; // Other nodes very dim
+            });
+            
+            // Generate sequential path highlighting
+            const sequentialPath = [];
+            
+            // Sort by sequence
+            const executionSequence = graphData.nodes
+                .filter(n => n.sequence !== Infinity)
+                .sort((a, b) => a.sequence - b.sequence);
+            
+            // Highlight link labels for sequential calls
+            linkLabels.style("opacity", d => {
+                // Show sequence numbers for direct call sequence links
+                return (d.sourceSeq !== Infinity && d.targetSeq !== Infinity) ? 0.9 : 0.1;
+            });
         }
         
         // Reset view button
@@ -1478,6 +1767,7 @@ class FunctionVisualizer:
             // Reset node highlighting
             node.style("opacity", 1);
             link.style("opacity", 0.6);
+            linkLabels.style("opacity", 0.6);
             
             node.filter(d => d.type === "class_container").each(function(d) {
                 const element = d3.select(this);
@@ -1517,6 +1807,9 @@ class FunctionVisualizer:
         // Vertical layout button
         document.getElementById("verticalLayoutBtn").addEventListener("click", applyVerticalLayout);
         
+        // Sequential layout button
+        document.getElementById("sequentialLayoutBtn").addEventListener("click", applySequentialLayout);
+        
         // Expand/collapse all classes functions
         function expandAllClasses() {
             graphData.nodes.forEach(node => {
@@ -1549,6 +1842,7 @@ class FunctionVisualizer:
                 // If search is cleared, reset all visibility
                 node.style("opacity", 1);
                 link.style("opacity", 0.6);
+                linkLabels.style("opacity", isVerticalLayout || isSequentialLayout ? 0.6 : 0);
                 
                 // Restore collapsed/expanded state
                 initializeVisibility();
@@ -1561,8 +1855,13 @@ class FunctionVisualizer:
             graphData.nodes.forEach(n => {
                 const name = n.name.toLowerCase();
                 const filename = n.filename.toLowerCase();
+                const sequence = n.sequence !== Infinity ? n.sequence.toString() : '';
                 
-                if (name.includes(searchTerm) || filename.includes(searchTerm)) {
+                // Extended search to include sequence numbers
+                if (name.includes(searchTerm) || 
+                    filename.includes(searchTerm) || 
+                    sequence.includes(searchTerm)) {
+                    
                     matchingNodes.add(n.id);
                     
                     // For class methods, include their class container
@@ -1591,6 +1890,11 @@ class FunctionVisualizer:
                 (matchingNodes.has(d.source.id) && matchingNodes.has(d.target.id)) ? 0.8 : 0.1
             );
             
+            // Show link labels for matching nodes
+            linkLabels.style("opacity", d => 
+                (matchingNodes.has(d.source.id) && matchingNodes.has(d.target.id)) ? 0.8 : 0.1
+            );
+            
             // Make sure all matching nodes from classes are visible
             graphData.nodes.forEach(n => {
                 if (n.type === "class_container" && matchingNodes.has(n.id) && n.collapsed) {
@@ -1598,16 +1902,13 @@ class FunctionVisualizer:
                     toggleClassNode(n);
                 }
             });
-        });
-    </script>
-</body>
-</html>
-''')
-        
+        }); 
+        </script>
+        </body>
+        </html>
+        ''')
         print(f"Interactive HTML visualization generated: {output_path}")
-        return output_path
-
-
+        return output_path 
 
 # Example decorators and helper functions for easy use
 def trace_and_visualize(func):
@@ -1636,6 +1937,59 @@ def run_with_tracing(func, *args, **kwargs):
         tracer.generate_html_visualization()
     return result
 
+def trace_sequential(func):
+    """Decorator to trace and visualize a function call with sequential ordering."""
+    def wrapper(*args, **kwargs):
+        tracer = FunctionCallTracer()
+        # Reset sequence counter to ensure clean sequence tracking
+        tracer.sequence_counter = 0
+        tracer.start_tracing()
+        try:
+            result = func(*args, **kwargs)
+        finally:
+            tracer.stop_tracing()
+            # Generate both visualizations
+            tracer.generate_mermaid_diagram('sequential_calls.md')
+            tracer.generate_html_visualization('sequential_calls.html')
+            print(f"Sequential function call visualization generated. Open 'sequential_calls.html' to view.")
+        return result
+    return wrapper
+
+def analyze_call_sequence(module_or_function, output_dir='.'):
+    """
+    Analyze the sequential call patterns of a module or function.
+    
+    Args:
+        module_or_function: A module object or function to trace
+        output_dir: Directory to store output files
+    
+    Returns:
+        Path to the generated HTML visualization
+    """
+    if callable(module_or_function):
+        # Wrap a single function
+        decorated = trace_sequential(module_or_function)
+        result = decorated()
+        return os.path.join(output_dir, 'sequential_calls.html')
+    else:
+        # Wrap all functions in a module
+        tracer = FunctionCallTracer(output_dir=output_dir)
+        
+        # Apply tracing to the entire module's execution
+        tracer.start_tracing()
+        try:
+            # Execute the module code
+            if hasattr(module_or_function, '__file__'):
+                with open(module_or_function.__file__) as f:
+                    code = compile(f.read(), module_or_function.__file__, 'exec')
+                    exec(code, module_or_function.__dict__)
+        finally:
+            tracer.stop_tracing()
+            tracer.generate_mermaid_diagram('module_sequential_calls.md')
+            html_path = tracer.generate_html_visualization('module_sequential_calls.html')
+            print(f"Module sequence analysis complete. Open '{html_path}' to view.")
+            return html_path
+
 from functools import wraps
 from unittest.mock import patch
 
@@ -1654,7 +2008,11 @@ def test_traced_patch(*patch_args, **patch_kwargs):
                 result = patched_func(*args, **kwargs)
             finally:
                 tracer.stop_tracing()
-                tracer.generate_html_visualization(f"{func.__name__}_trace.html")
+                tracer.generate_html_visualization(f"{func.__name__}_sequential_trace.html")
             return result
         return wrapper
     return decorator
+
+
+
+        
