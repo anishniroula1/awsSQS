@@ -146,6 +146,25 @@
         th {
             background-color: #f0f0f0;
         }
+        .exception-title {
+            color: #d9534f;
+            margin-top: 15px;
+            margin-bottom: 5px;
+        }
+        .exception-text {
+            color: #d9534f;
+            font-family: monospace;
+        }
+        .traceback-info {
+            font-family: monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            background-color: #f8f8f8;
+            padding: 5px;
+            border-radius: 4px;
+            border-left: 3px solid #d9534f;
+            margin-top: 5px;
+        }
     </style>
 </head>
 <body>
@@ -214,7 +233,7 @@
 
     <script>
         // Graph data from Python
-        const graphData = {"nodes": [{"id": 0, "name": "AnalysisEngine", "filename": "system_trace.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/system_trace.py", "line": "N/A", "type": "class_container", "params": [], "methods": [3, 12, 14], "collapsed": true}, {"id": 1, "name": "DataProcessor", "filename": "system_trace.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/system_trace.py", "line": "N/A", "type": "class_container", "params": [], "methods": [9, 15, 17], "collapsed": true}, {"id": 2, "name": "FunctionCallTracer", "filename": "FunctionCallTracer.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/FunctionCallTracer.py", "line": "N/A", "type": "class_container", "params": [], "methods": [16], "collapsed": true}, {"id": 3, "name": "initialize", "filename": "system_trace.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/system_trace.py", "line": "84", "type": "class_method", "params": [{"name": "data_source", "value": "'sample_data'", "type": "str"}, {"name": "__class_name__", "value": "AnalysisEngine", "type": "class"}], "parent_class": "AnalysisEngine"}, {"id": 4, "name": "validate_config", "filename": "system_trace.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/system_trace.py", "line": "29", "type": "function", "params": [{"name": "config", "value": "{'default_mode': 'standard', 'created_by': 'MainAnalyzer'}", "type": "dict"}], "parent_class": null}, {"id": 5, "name": "<genexpr>", "filename": "system_trace.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/system_trace.py", "line": "33", "type": "function", "params": [{"name": ".0", "value": "<list_iterator object at 0x1047211c0>", "type": "list_iterator"}, {"name": "config", "value": "{'default_mode': 'standard', 'created_by': 'MainAnalyzer'}", "type": "dict"}, {"name": "key", "value": "'default_mode'", "type": "str"}], "parent_class": null}, {"id": 6, "name": "format_results", "filename": "system_trace.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/system_trace.py", "line": "42", "type": "function", "params": [{"name": "cls", "value": "<class '__main__.ResultFormatter'>", "type": "type"}, {"name": "results", "value": "[{'id': 0, 'value': 194, 'processed': True}, {'id': 1, 'value': 166, 'processed': True}, {'id': 2, 'value': 18, 'processed': True}, {'id': 3, 'value': 6, 'processed': True}, {'id': 4, 'value': 194, 'processed': True}]", "type": "list"}, {"name": "format_type", "value": "'detailed'", "type": "str"}], "parent_class": null}, {"id": 7, "name": "main", "filename": "system_trace.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/system_trace.py", "line": "128", "type": "main_method", "params": [], "parent_class": null}, {"id": 8, "name": "get_timestamp", "filename": "system_trace.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/system_trace.py", "line": "35", "type": "function", "params": [], "parent_class": null}, {"id": 9, "name": "process_data", "filename": "system_trace.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/system_trace.py", "line": "13", "type": "class_method", "params": [{"name": "__class_name__", "value": "DataProcessor", "type": "class"}], "parent_class": "DataProcessor"}, {"id": 10, "name": "_detailed_format", "filename": "system_trace.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/system_trace.py", "line": "60", "type": "function", "params": [{"name": "cls", "value": "<class '__main__.ResultFormatter'>", "type": "type"}, {"name": "results", "value": "[{'id': 0, 'value': 194, 'processed': True}, {'id': 1, 'value': 166, 'processed': True}, {'id': 2, 'value': 18, 'processed': True}, {'id': 3, 'value': 6, 'processed': True}, {'id': 4, 'value': 194, 'processed': True}]", "type": "list"}], "parent_class": null}, {"id": 11, "name": "<listcomp>", "filename": "system_trace.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/system_trace.py", "line": "24", "type": "function", "params": [{"name": ".0", "value": "<range_iterator object at 0x104733390>", "type": "range_iterator"}], "parent_class": null}, {"id": 12, "name": "run_analysis", "filename": "system_trace.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/system_trace.py", "line": "94", "type": "class_method", "params": [{"name": "format_type", "value": "'detailed'", "type": "str"}, {"name": "__class_name__", "value": "AnalysisEngine", "type": "class"}], "parent_class": "AnalysisEngine"}, {"id": 13, "name": "<listcomp>", "filename": "system_trace.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/system_trace.py", "line": "16", "type": "function", "params": [{"name": ".0", "value": "<list_iterator object at 0x1047333a0>", "type": "list_iterator"}], "parent_class": null}, {"id": 14, "name": "__init__", "filename": "system_trace.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/system_trace.py", "line": "80", "type": "constructor", "params": [{"name": "name", "value": "'MainAnalyzer'", "type": "str"}, {"name": "__class_name__", "value": "AnalysisEngine", "type": "class"}], "parent_class": "AnalysisEngine"}, {"id": 15, "name": "_load_from_source", "filename": "system_trace.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/system_trace.py", "line": "22", "type": "class_method", "params": [{"name": "__class_name__", "value": "DataProcessor", "type": "class"}], "parent_class": "DataProcessor"}, {"id": 16, "name": "stop_tracing", "filename": "FunctionCallTracer.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/FunctionCallTracer.py", "line": "228", "type": "class_method", "params": [{"name": "__class_name__", "value": "FunctionCallTracer", "type": "class"}], "parent_class": "FunctionCallTracer"}, {"id": 17, "name": "__init__", "filename": "system_trace.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/system_trace.py", "line": "8", "type": "constructor", "params": [{"name": "data_source", "value": "'sample_data'", "type": "str"}, {"name": "config", "value": "{'default_mode': 'standard', 'created_by': 'MainAnalyzer'}", "type": "dict"}, {"name": "__class_name__", "value": "DataProcessor", "type": "class"}], "parent_class": "DataProcessor"}], "links": [{"source": 7, "target": 14}, {"source": 14, "target": 3}, {"source": 3, "target": 4}, {"source": 4, "target": 5}, {"source": 5, "target": 5}, {"source": 5, "target": 17}, {"source": 17, "target": 12}, {"source": 12, "target": 9}, {"source": 9, "target": 15}, {"source": 15, "target": 11}, {"source": 11, "target": 13}, {"source": 13, "target": 8}, {"source": 8, "target": 6}, {"source": 6, "target": 10}, {"source": 10, "target": 16}]};
+        const graphData = {"nodes": [{"id": 0, "name": "DataProcessor", "filename": "system_trace.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/system_trace.py", "line": "N/A", "type": "class_container", "params": [], "methods": [3, 5, 6], "collapsed": true}, {"id": 1, "name": "AnalysisEngine", "filename": "system_trace.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/system_trace.py", "line": "N/A", "type": "class_container", "params": [], "methods": [4, 11, 15], "collapsed": true}, {"id": 2, "name": "<listcomp>", "filename": "system_trace.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/system_trace.py", "line": "16", "type": "function", "params": [{"name": ".0", "value": "<list_iterator object at 0x1027c7310>", "type": "list_iterator"}, {"name": "__return_value__", "value": "[{'id': 0, 'value': 76, 'processed': True}, {'id': 1, 'value': 26, 'processed': True}, {'id': 2, 'value': 8, 'processed': True}, {'id': 3, 'value': 56, 'processed': True}, {'id': 4, 'value': 102, 'processed': True}]", "type": "list"}], "parent_class": null}, {"id": 3, "name": "_load_from_source", "filename": "system_trace.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/system_trace.py", "line": "22", "type": "class_method", "params": [{"name": "__class_name__", "value": "DataProcessor", "type": "class"}, {"name": "__return_value__", "value": "[{'id': 0, 'value': 38}, {'id': 1, 'value': 13}, {'id': 2, 'value': 4}, {'id': 3, 'value': 28}, {'id': 4, 'value': 51}]", "type": "list"}], "parent_class": "DataProcessor"}, {"id": 4, "name": "initialize", "filename": "system_trace.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/system_trace.py", "line": "84", "type": "class_method", "params": [{"name": "data_source", "value": "'sample_data'", "type": "str"}, {"name": "__class_name__", "value": "AnalysisEngine", "type": "class"}, {"name": "__return_value__", "value": "True", "type": "bool"}], "parent_class": "AnalysisEngine"}, {"id": 5, "name": "__init__", "filename": "system_trace.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/system_trace.py", "line": "8", "type": "constructor", "params": [{"name": "data_source", "value": "'sample_data'", "type": "str"}, {"name": "config", "value": "{'default_mode': 'standard', 'created_by': 'MainAnalyzer'}", "type": "dict"}, {"name": "__class_name__", "value": "DataProcessor", "type": "class"}, {"name": "__return_value__", "value": "None", "type": "NoneType"}], "parent_class": "DataProcessor"}, {"id": 6, "name": "process_data", "filename": "system_trace.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/system_trace.py", "line": "13", "type": "class_method", "params": [{"name": "__class_name__", "value": "DataProcessor", "type": "class"}, {"name": "__return_value__", "value": "[{'id': 0, 'value': 76, 'processed': True}, {'id': 1, 'value': 26, 'processed': True}, {'id': 2, 'value': 8, 'processed': True}, {'id': 3, 'value': 56, 'processed': True}, {'id': 4, 'value': 102, 'processed': True}]", "type": "list"}], "parent_class": "DataProcessor"}, {"id": 7, "name": "format_results", "filename": "system_trace.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/system_trace.py", "line": "42", "type": "function", "params": [{"name": "cls", "value": "<class '__main__.ResultFormatter'>", "type": "type"}, {"name": "results", "value": "[{'id': 0, 'value': 76, 'processed': True}, {'id': 1, 'value': 26, 'processed': True}, {'id': 2, 'value': 8, 'processed': True}, {'id': 3, 'value': 56, 'processed': True}, {'id': 4, 'value': 102, 'processed': True}]", "type": "list"}, {"name": "format_type", "value": "'detailed'", "type": "str"}, {"name": "__return_value__", "value": "'=== Detailed Results ===\\nItem ID: 0\\n  Value: 76\\n  Processed: True\\n\\nItem ID: 1\\n  Value: 26\\n  Processed: True\\n\\nItem ID: 2\\n  Value: 8\\n  Processed: True\\n\\nItem ID: 3\\n  Value: 56\\n  Processed: True\\n\\nItem ID: 4\\n  Value: 102\\n  Processed: True\\n'", "type": "str"}], "parent_class": null}, {"id": 8, "name": "<genexpr>", "filename": "system_trace.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/system_trace.py", "line": "33", "type": "function", "params": [{"name": ".0", "value": "<list_iterator object at 0x1027b5130>", "type": "list_iterator"}, {"name": "config", "value": "{'default_mode': 'standard', 'created_by': 'MainAnalyzer'}", "type": "dict"}, {"name": "key", "value": "'default_mode'", "type": "str"}, {"name": "__return_value__", "value": "None", "type": "NoneType"}], "parent_class": null}, {"id": 9, "name": "validate_config", "filename": "system_trace.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/system_trace.py", "line": "29", "type": "function", "params": [{"name": "config", "value": "{'default_mode': 'standard', 'created_by': 'MainAnalyzer'}", "type": "dict"}, {"name": "__return_value__", "value": "True", "type": "bool"}], "parent_class": null}, {"id": 10, "name": "main", "filename": "system_trace.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/system_trace.py", "line": "128", "type": "main_method", "params": [{"name": "__return_value__", "value": "None", "type": "NoneType"}], "parent_class": null}, {"id": 11, "name": "run_analysis", "filename": "system_trace.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/system_trace.py", "line": "94", "type": "class_method", "params": [{"name": "format_type", "value": "'detailed'", "type": "str"}, {"name": "__class_name__", "value": "AnalysisEngine", "type": "class"}, {"name": "__return_value__", "value": "'Analysis completed at 2025-03-03 11:06:35\\n\\n=== Detailed Results ===\\nItem ID: 0\\n  Value: 76\\n  Processed: True\\n\\nItem ID: 1\\n  Value: 26\\n  Processed: True\\n\\nItem ID: 2\\n  Value: 8\\n  Processed: True\\n\\nItem ID: 3\\n  Value: 56\\n  Processed: True\\n\\nItem ID: 4\\n  Value: 102\\n  Processed: True\\n'", "type": "str"}], "parent_class": "AnalysisEngine"}, {"id": 12, "name": "_detailed_format", "filename": "system_trace.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/system_trace.py", "line": "60", "type": "function", "params": [{"name": "cls", "value": "<class '__main__.ResultFormatter'>", "type": "type"}, {"name": "results", "value": "[{'id': 0, 'value': 76, 'processed': True}, {'id': 1, 'value': 26, 'processed': True}, {'id': 2, 'value': 8, 'processed': True}, {'id': 3, 'value': 56, 'processed': True}, {'id': 4, 'value': 102, 'processed': True}]", "type": "list"}, {"name": "__return_value__", "value": "'=== Detailed Results ===\\nItem ID: 0\\n  Value: 76\\n  Processed: True\\n\\nItem ID: 1\\n  Value: 26\\n  Processed: True\\n\\nItem ID: 2\\n  Value: 8\\n  Processed: True\\n\\nItem ID: 3\\n  Value: 56\\n  Processed: True\\n\\nItem ID: 4\\n  Value: 102\\n  Processed: True\\n'", "type": "str"}], "parent_class": null}, {"id": 13, "name": "get_timestamp", "filename": "system_trace.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/system_trace.py", "line": "35", "type": "function", "params": [{"name": "__return_value__", "value": "'2025-03-03 11:06:35'", "type": "str"}], "parent_class": null}, {"id": 14, "name": "<listcomp>", "filename": "system_trace.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/system_trace.py", "line": "24", "type": "function", "params": [{"name": ".0", "value": "<range_iterator object at 0x1027c7300>", "type": "range_iterator"}, {"name": "__return_value__", "value": "[{'id': 0, 'value': 38}, {'id': 1, 'value': 13}, {'id': 2, 'value': 4}, {'id': 3, 'value': 28}, {'id': 4, 'value': 51}]", "type": "list"}], "parent_class": null}, {"id": 15, "name": "__init__", "filename": "system_trace.py", "filepath": "/Users/anishniroula/Desktop/awsSQS/system_trace.py", "line": "80", "type": "constructor", "params": [{"name": "name", "value": "'MainAnalyzer'", "type": "str"}, {"name": "__class_name__", "value": "AnalysisEngine", "type": "class"}, {"name": "__return_value__", "value": "None", "type": "NoneType"}], "parent_class": "AnalysisEngine"}], "links": [{"source": 10, "target": 15}, {"source": 10, "target": 4}, {"source": 10, "target": 11}, {"source": 4, "target": 9}, {"source": 4, "target": 5}, {"source": 9, "target": 8}, {"source": 11, "target": 6}, {"source": 11, "target": 13}, {"source": 11, "target": 7}, {"source": 6, "target": 3}, {"source": 6, "target": 2}, {"source": 3, "target": 14}, {"source": 7, "target": 12}]};
         
         // Color mapping by node type
         const colorMap = {
@@ -334,6 +353,22 @@
                     return d.name + "()";
                 }
             });
+
+        // Change the color for nodes with exceptions
+        node.append("circle")
+            .attr("r", 10)
+            .attr("fill", d => {
+                if (d.params && d.params.__has_exception__) {
+                    return "#d9534f";  // Red for exceptions
+                }
+                return colorMap[d.type];
+            })
+            .attr("stroke", d => {
+                if (d.params && d.params.__has_exception__) {
+                    return "#a94442";  // Darker red for exception stroke
+                }
+                return d3.rgb(colorMap[d.type]).darker(0.5);
+            });
             
         // Tooltip
         const tooltip = d3.select("#tooltip");
@@ -364,6 +399,40 @@
                 });
             } else {
                 tooltipContent += "No parameters";
+            }
+
+            if (d.params && d.params.__return_value__) {
+                const returnInfo = document.createElement('div');
+                returnInfo.innerHTML = `<h4>Return Value:</h4>
+                    <div class="return-value">
+                        <span class="param-value">${d.params.__return_value__[0]}</span>
+                        <span class="param-type">(${d.params.__return_value__[1]})</span>
+                    </div>`;
+                detailsDiv.appendChild(returnInfo);
+            }
+            // Add exception info if available
+            if (d.params && d.params.__exception__) {
+                const exceptionInfo = document.createElement('div');
+                exceptionInfo.innerHTML = `<h4 class="exception-title">Exception:</h4>
+                    <div class="exception-value">
+                        <span class="exception-text">${d.params.__exception__[0]}</span>
+                    </div>`;
+                
+                // Add traceback info if available
+                if (d.params.__traceback__) {
+                    exceptionInfo.innerHTML += `<h5>Traceback:</h5>
+                        <div class="traceback-info">
+                            ${d.params.__traceback__[0]}
+                        </div>`;
+                }
+                
+                detailsDiv.appendChild(exceptionInfo);
+            }
+            // Show the return value
+            if (d.params.__return_value__) {
+                tooltipContent += `<strong>Returns:</strong> `;
+                tooltipContent += `<span class="param-value">${d.params.__return_value__[0]}</span> `;
+                tooltipContent += `<span class="param-type">(${d.params.__return_value__[1]})</span><br/>`;
             }
             
             tooltip.html(tooltipContent)

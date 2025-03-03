@@ -211,15 +211,104 @@ class FunctionCallTracer:
         
         self.func_params[func_id] = params
         
+        # Associate function ID with call frame for return value tracking
+        self.frame_to_func_id = getattr(self, 'frame_to_func_id', {})
+        self.frame_to_func_id[id(frame)] = func_id
+        
         # Update stack
         self.current_stack.append(func_id)
         
-        return self.trace_calls
-    def trace_returns(self, frame, event, arg):
-        """Trace function returns to maintain the stack."""
-        if event == 'return' and self.current_stack:
-            self.current_stack.pop()
-        return self.trace_returns
+        # Return function to handle return and exception events
+        return self.trace_events
+
+    def trace_events(self, frame, event, arg):
+        """
+        Trace function returns and exceptions.
+        
+        Args:
+            frame: The current stack frame
+            event: The event type ('call', 'line', 'return', 'exception')
+            arg: For 'return' - the return value; for 'exception' - a tuple (exception, value, traceback)
+        """
+        frame_id = id(frame)
+        
+        if event == 'return' and hasattr(self, 'frame_to_func_id') and frame_id in self.frame_to_func_id:
+            func_id = self.frame_to_func_id[frame_id]
+            
+            # Store the return value
+            return_value = arg  # 'arg' contains the return value in 'return' events
+            
+            try:
+                # Get a representation of the return value
+                return_repr = repr(return_value)
+                return_type = type(return_value).__name__
+                
+                # Truncate very long representations
+                if len(return_repr) > 1000:
+                    return_repr = return_repr[:997] + "..."
+                
+                # Store with the function's parameters
+                if func_id in self.func_params:
+                    self.func_params[func_id]['__return_value__'] = (return_repr, return_type)
+                
+                # Clean up the frame tracking to avoid memory leaks
+                del self.frame_to_func_id[frame_id]
+            except Exception as e:
+                # If we can't represent the return value, at least note that there was one
+                if func_id in self.func_params:
+                    self.func_params[func_id]['__return_value__'] = (f"<unprintable: {str(e)}>", "unknown")
+            
+            # Update stack on return
+            if self.current_stack:
+                self.current_stack.pop()
+        
+        elif event == 'exception' and hasattr(self, 'frame_to_func_id') and frame_id in self.frame_to_func_id:
+            # For exceptions, arg is (exception, value, traceback)
+            exc_type, exc_value, exc_traceback = arg
+            func_id = self.frame_to_func_id[frame_id]
+            
+            # Create a representation of the exception
+            try:
+                exc_name = exc_type.__name__
+                exc_msg = str(exc_value)
+                
+                # Truncate very long exception messages
+                if len(exc_msg) > 500:
+                    exc_msg = exc_msg[:497] + "..."
+                
+                # Store with the function's parameters
+                if func_id in self.func_params:
+                    self.func_params[func_id]['__exception__'] = (f"{exc_name}: {exc_msg}", "exception")
+                    
+                    # Set a flag to indicate this function raised an exception
+                    self.func_params[func_id]['__has_exception__'] = ('True', 'bool')
+                    
+                    # Optionally capture traceback details
+                    tb_entries = []
+                    tb = exc_traceback
+                    while tb:
+                        frame = tb.tb_frame
+                        filename = frame.f_code.co_filename
+                        name = frame.f_code.co_name
+                        lineno = tb.tb_lineno
+                        tb_entries.append(f"{os.path.basename(filename)}:{name}:{lineno}")
+                        tb = tb.tb_next
+                    
+                    if tb_entries:
+                        tb_str = " -> ".join(tb_entries)
+                        if len(tb_str) > 500:
+                            tb_str = tb_str[:497] + "..."
+                        self.func_params[func_id]['__traceback__'] = (tb_str, "traceback")
+                
+                # Don't clean up the frame tracking yet since the function hasn't returned
+            except Exception as e:
+                # If we can't represent the exception, at least note that there was one
+                if func_id in self.func_params:
+                    self.func_params[func_id]['__exception__'] = (f"<unprintable exception: {str(e)}>", "exception")
+                    self.func_params[func_id]['__has_exception__'] = ('True', 'bool')
+        
+        # Continue tracing
+        return self.trace_events
     
     def start_tracing(self):
         """Start tracing function calls."""
@@ -625,6 +714,25 @@ class FunctionVisualizer:
         th {
             background-color: #f0f0f0;
         }
+        .exception-title {
+            color: #d9534f;
+            margin-top: 15px;
+            margin-bottom: 5px;
+        }
+        .exception-text {
+            color: #d9534f;
+            font-family: monospace;
+        }
+        .traceback-info {
+            font-family: monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            background-color: #f8f8f8;
+            padding: 5px;
+            border-radius: 4px;
+            border-left: 3px solid #d9534f;
+            margin-top: 5px;
+        }
     </style>
 </head>
 <body>
@@ -813,6 +921,22 @@ class FunctionVisualizer:
                     return d.name + "()";
                 }
             });
+
+        // Change the color for nodes with exceptions
+        node.append("circle")
+            .attr("r", 10)
+            .attr("fill", d => {
+                if (d.params && d.params.__has_exception__) {
+                    return "#d9534f";  // Red for exceptions
+                }
+                return colorMap[d.type];
+            })
+            .attr("stroke", d => {
+                if (d.params && d.params.__has_exception__) {
+                    return "#a94442";  // Darker red for exception stroke
+                }
+                return d3.rgb(colorMap[d.type]).darker(0.5);
+            });
             
         // Tooltip
         const tooltip = d3.select("#tooltip");
@@ -843,6 +967,40 @@ class FunctionVisualizer:
                 });
             } else {
                 tooltipContent += "No parameters";
+            }
+
+            if (d.params && d.params.__return_value__) {
+                const returnInfo = document.createElement('div');
+                returnInfo.innerHTML = `<h4>Return Value:</h4>
+                    <div class="return-value">
+                        <span class="param-value">${d.params.__return_value__[0]}</span>
+                        <span class="param-type">(${d.params.__return_value__[1]})</span>
+                    </div>`;
+                detailsDiv.appendChild(returnInfo);
+            }
+            // Add exception info if available
+            if (d.params && d.params.__exception__) {
+                const exceptionInfo = document.createElement('div');
+                exceptionInfo.innerHTML = `<h4 class="exception-title">Exception:</h4>
+                    <div class="exception-value">
+                        <span class="exception-text">${d.params.__exception__[0]}</span>
+                    </div>`;
+                
+                // Add traceback info if available
+                if (d.params.__traceback__) {
+                    exceptionInfo.innerHTML += `<h5>Traceback:</h5>
+                        <div class="traceback-info">
+                            ${d.params.__traceback__[0]}
+                        </div>`;
+                }
+                
+                detailsDiv.appendChild(exceptionInfo);
+            }
+            // Show the return value
+            if (d.params.__return_value__) {
+                tooltipContent += `<strong>Returns:</strong> `;
+                tooltipContent += `<span class="param-value">${d.params.__return_value__[0]}</span> `;
+                tooltipContent += `<span class="param-type">(${d.params.__return_value__[1]})</span><br/>`;
             }
             
             tooltip.html(tooltipContent)
