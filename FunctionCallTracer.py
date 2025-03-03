@@ -1,9 +1,7 @@
 import sys
 import os
-import inspect
-from typing import Dict, List, Tuple, Set, Optional
+from typing import Set
 import json
-import time
 
 class FunctionCallTracer:
     def __init__(self, output_dir: str = '.', include_stdlib: bool = False, max_depth: int = None):
@@ -468,7 +466,7 @@ class FunctionVisualizer:
                 "filepath": filepath,
                 "line": "N/A",  # Classes span multiple lines
                 "type": "class_container",
-                "params": [],
+                "params": {},
                 "methods": [],  # Will store indices of method nodes
                 "collapsed": True  # Initially collapsed
             }
@@ -518,14 +516,10 @@ class FunctionVisualizer:
                 node_type = "function"
                 parent_class = None
             
-            # Format parameters
-            params = []
+            # Get all params including special ones
+            params = {}
             if node_id in tracer.func_params:
-                for name, (value, type_name) in tracer.func_params[node_id].items():
-                    # Truncate long values
-                    # if len(value) > 20:
-                    #     value = value[:17] + "..."
-                    params.append({"name": name, "value": value, "type": type_name})
+                params = tracer.func_params[node_id]
             
             # Skip if this is a class method (we'll handle these differently)
             if parent_class:
@@ -595,6 +589,7 @@ class FunctionVisualizer:
             border-radius: 8px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
             overflow: hidden;
+            min-height: 600px;
         }
         .tooltip {
             position: absolute;
@@ -608,6 +603,7 @@ class FunctionVisualizer:
             opacity: 0;
             transition: opacity 0.3s;
             max-width: 300px;
+            z-index: 1000;
         }
         .param-name {
             font-weight: bold;
@@ -626,26 +622,38 @@ class FunctionVisualizer:
         .node text {
             font-size: 12px;
         }
+        .text-bg {
+            fill: white;
+            fill-opacity: 0.9;
+        }
         .link {
             stroke: #999;
             stroke-opacity: 0.6;
             stroke-width: 1.5px;
+            fill: none;
         }
         .controls {
             margin-bottom: 20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            flex-wrap: wrap;
+        }
+        .controls-left {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 10px;
         }
         .controls button {
             background-color: #4285f4;
             color: white;
             border: none;
             padding: 8px 12px;
-            margin-right: 8px;
             border-radius: 4px;
             cursor: pointer;
             font-size: 14px;
+            white-space: nowrap;
         }
         .controls button:hover {
             background-color: #3367d6;
@@ -663,11 +671,18 @@ class FunctionVisualizer:
         #collapseAllBtn:hover {
             background-color: #f5ae00;
         }
+        #verticalLayoutBtn {
+            background-color: #ea4335;
+        }
+        #verticalLayoutBtn:hover {
+            background-color: #d62516;
+        }
         .legend {
             display: flex;
             justify-content: center;
             margin-top: 10px;
             font-size: 12px;
+            flex-wrap: wrap;
         }
         .legend-item {
             display: flex;
@@ -714,6 +729,8 @@ class FunctionVisualizer:
         th {
             background-color: #f0f0f0;
         }
+        
+        /* Exception styling */
         .exception-title {
             color: #d9534f;
             margin-top: 15px;
@@ -733,6 +750,16 @@ class FunctionVisualizer:
             border-left: 3px solid #d9534f;
             margin-top: 5px;
         }
+        
+        /* Return value styling */
+        .return-value {
+            font-family: monospace;
+            background-color: #f8f8f8;
+            padding: 5px;
+            border-radius: 4px;
+            border-left: 3px solid #4285f4;
+            margin-top: 5px;
+        }
     </style>
 </head>
 <body>
@@ -740,10 +767,11 @@ class FunctionVisualizer:
         <h1>Function Call Visualization</h1>
         
         <div class="controls">
-            <div>
+            <div class="controls-left">
                 <button id="resetBtn">Reset View</button>
                 <button id="expandAllBtn">Expand All Classes</button>
                 <button id="collapseAllBtn">Collapse All Classes</button>
+                <button id="verticalLayoutBtn">Vertical Layout</button>
             </div>
             <div>
                 <label for="searchInput">Search: </label>
@@ -783,6 +811,8 @@ class FunctionVisualizer:
         <div id="functionDetails" class="function-details">
             <h3 id="selectedFunction">Function Details</h3>
             <p id="fileInfo">File: </p>
+            <div id="returnValueInfo"></div>
+            <div id="exceptionInfo"></div>
             <h4>Parameters:</h4>
             <table id="paramsTable">
                 <thead>
@@ -828,21 +858,13 @@ class FunctionVisualizer:
             
         const g = svg.append("g");
         
-        // Set up the simulation
-        const simulation = d3.forceSimulation(graphData.nodes)
-            .force("link", d3.forceLink(graphData.links).id(d => d.id).distance(100))
-            .force("charge", d3.forceManyBody().strength(-300))
-            .force("center", d3.forceCenter(width / 2, height / 2))
-            .force("collide", d3.forceCollide().radius(50));
-        
-        // Create links
+        // Create links with curved paths
         const link = g.append("g")
-            .selectAll("line")
+            .selectAll("path")
             .data(graphData.links)
             .enter()
-            .append("line")
-            .attr("class", "link")
-            .attr("marker-end", "url(#arrowhead)");
+            .append("path")
+            .attr("class", "link");
         
         // Create arrowhead marker
         svg.append("defs").append("marker")
@@ -901,8 +923,19 @@ class FunctionVisualizer:
                 // Use circles for functions and methods
                 nodeElement.append("circle")
                     .attr("r", 10)
-                    .attr("fill", d => colorMap[d.type])
-                    .attr("stroke", d => d3.rgb(colorMap[d.type]).darker(0.5))
+                    .attr("fill", d => {
+                        // Use red for nodes with exceptions
+                        if (d.params.__has_exception__) {
+                            return "#d9534f";  // Red for exceptions
+                        }
+                        return colorMap[d.type];
+                    })
+                    .attr("stroke", d => {
+                        if (d.params.__has_exception__) {
+                            return "#a94442";  // Darker red for exception stroke
+                        }
+                        return d3.rgb(colorMap[d.type]).darker(0.5);
+                    })
                     .attr("stroke-width", 2);
             }
         });
@@ -915,33 +948,29 @@ class FunctionVisualizer:
                 if (d.type === "class_container") {
                     return `Class ${d.name}`;
                 } else if (d.parent_class) {
-                    // For class methods, show ClassName.MethodName format
                     return `${d.parent_class}.${d.name}()`;
                 } else {
                     return d.name + "()";
                 }
             });
-
-        // Change the color for nodes with exceptions
-        node.append("circle")
-            .attr("r", 10)
-            .attr("fill", d => {
-                if (d.params && d.params.__has_exception__) {
-                    return "#d9534f";  // Red for exceptions
-                }
-                return colorMap[d.type];
-            })
-            .attr("stroke", d => {
-                if (d.params && d.params.__has_exception__) {
-                    return "#a94442";  // Darker red for exception stroke
-                }
-                return d3.rgb(colorMap[d.type]).darker(0.5);
-            });
             
         // Tooltip
         const tooltip = d3.select("#tooltip");
         
-        // Initialize visibility
+        // Set up the simulation
+        const simulation = d3.forceSimulation(graphData.nodes)
+            .force("link", d3.forceLink(graphData.links).id(d => d.id).distance(100))
+            .force("charge", d3.forceManyBody().strength(-300))
+            .force("center", d3.forceCenter(width / 2, height / 2))
+            .force("collide", d3.forceCollide().radius(50));
+            
+        // Flag to track if vertical layout is active
+        let isVerticalLayout = false;
+        
+        // Initialize the visualization with the force layout
+        initForceLayout();
+            
+        // Initialize visibility based on collapsed classes
         initializeVisibility();
         
         node.on("mouseover", function(event, d) {
@@ -950,57 +979,45 @@ class FunctionVisualizer:
             
             // Create tooltip content
             let tooltipContent = "";
+            
             if (d.type === "class_container") {
                 tooltipContent = `<strong>Class ${d.name}</strong><br/>`;
+                tooltipContent += `Contains ${d.methods.length} methods<br/>`;
             } else if (d.parent_class) {
                 tooltipContent = `<strong>${d.parent_class}.${d.name}()</strong><br/>`;
             } else {
                 tooltipContent = `<strong>${d.name}()</strong><br/>`;
             }
             
-            if (d.params.length > 0) {
-                tooltipContent += `<strong>Parameters:</strong><br/>`;
-                d.params.forEach(param => {
-                    tooltipContent += `<span class="param-name">${param.name}</span>: `;
-                    tooltipContent += `<span class="param-value">${param.value}</span> `;
-                    tooltipContent += `<span class="param-type">(${param.type})</span><br/>`;
-                });
-            } else {
-                tooltipContent += "No parameters";
-            }
-
-            if (d.params && d.params.__return_value__) {
-                const returnInfo = document.createElement('div');
-                returnInfo.innerHTML = `<h4>Return Value:</h4>
-                    <div class="return-value">
-                        <span class="param-value">${d.params.__return_value__[0]}</span>
-                        <span class="param-type">(${d.params.__return_value__[1]})</span>
-                    </div>`;
-                detailsDiv.appendChild(returnInfo);
-            }
-            // Add exception info if available
-            if (d.params && d.params.__exception__) {
-                const exceptionInfo = document.createElement('div');
-                exceptionInfo.innerHTML = `<h4 class="exception-title">Exception:</h4>
-                    <div class="exception-value">
-                        <span class="exception-text">${d.params.__exception__[0]}</span>
-                    </div>`;
-                
-                // Add traceback info if available
-                if (d.params.__traceback__) {
-                    exceptionInfo.innerHTML += `<h5>Traceback:</h5>
-                        <div class="traceback-info">
-                            ${d.params.__traceback__[0]}
-                        </div>`;
-                }
-                
-                detailsDiv.appendChild(exceptionInfo);
-            }
-            // Show the return value
+            tooltipContent += `File: ${d.filename}:${d.line}<br/>`;
+            
+            // Add return value if available
             if (d.params.__return_value__) {
                 tooltipContent += `<strong>Returns:</strong> `;
                 tooltipContent += `<span class="param-value">${d.params.__return_value__[0]}</span> `;
                 tooltipContent += `<span class="param-type">(${d.params.__return_value__[1]})</span><br/>`;
+            }
+            
+            // Add exception info if available
+            if (d.params.__exception__) {
+                tooltipContent += `<strong style="color:#d9534f">Exception:</strong> `;
+                tooltipContent += `<span class="exception-text">${d.params.__exception__[0]}</span><br/>`;
+            }
+            
+            // Add parameters
+            const standardParams = Object.entries(d.params).filter(
+                ([key]) => !key.startsWith('__')
+            );
+            
+            if (standardParams.length > 0) {
+                tooltipContent += `<strong>Parameters:</strong><br/>`;
+                standardParams.forEach(([key, [value, type]]) => {
+                    tooltipContent += `<span class="param-name">${key}</span>: `;
+                    tooltipContent += `<span class="param-value">${value}</span> `;
+                    tooltipContent += `<span class="param-type">(${type})</span><br/>`;
+                });
+            } else {
+                tooltipContent += "No parameters";
             }
             
             tooltip.html(tooltipContent)
@@ -1013,31 +1030,137 @@ class FunctionVisualizer:
         
         // Function to update simulation
         simulation.on("tick", () => {
-            link
-                .attr("x1", d => d.source.x)
-                .attr("y1", d => d.source.y)
-                .attr("x2", d => d.target.x)
-                .attr("y2", d => d.target.y);
+            link.attr("d", d => {
+                const source = d.source;
+                const target = d.target;
+                return `M${source.x},${source.y}
+                        C${source.x},${(source.y + target.y) / 2}
+                         ${target.x},${(source.y + target.y) / 2}
+                         ${target.x},${target.y}`;
+            });
             
             node.attr("transform", d => `translate(${d.x},${d.y})`);
         });
         
         // Drag functions
         function dragstarted(event, d) {
-            if (!event.active) simulation.alphaTarget(0.3).restart();
+            if (!isVerticalLayout && !event.active) simulation.alphaTarget(0.3).restart();
             d.fx = d.x;
             d.fy = d.y;
         }
         
         function dragged(event, d) {
-            d.fx = event.x;
-            d.fy = event.y;
+            if (!isVerticalLayout) {
+                // Only allow free dragging in force layout mode
+                d.fx = event.x;
+                d.fy = event.y;
+            } else {
+                // In vertical layout, only allow horizontal movement
+                d.fx = event.x;
+                // Keep vertical position fixed
+                d.fy = d.y;
+            }
         }
         
         function dragended(event, d) {
-            if (!event.active) simulation.alphaTarget(0);
-            d.fx = null;
-            d.fy = null;
+            if (!isVerticalLayout && !event.active) simulation.alphaTarget(0);
+            // In vertical layout, keep fixed positions
+            if (!isVerticalLayout) {
+                d.fx = null;
+                d.fy = null;
+            }
+        }
+        
+        // Initialize with force layout
+        function initForceLayout() {
+            // Add marker end for links
+            link.attr("marker-end", "url(#arrowhead)");
+            
+            // Clear any fixed positions
+            graphData.nodes.forEach(d => {
+                d.fx = null;
+                d.fy = null;
+            });
+            
+            // Run simulation
+            simulation.alpha(1).restart();
+            
+            isVerticalLayout = false;
+        }
+        
+        // Function to apply a simple vertical layout
+        function applyVerticalLayout() {
+            // Sort nodes by type (main methods first, then regular functions, etc)
+            const sortedNodes = [...graphData.nodes].sort((a, b) => {
+                // Always put main method at the top
+                if (a.type === "main_method") return -1;
+                if (b.type === "main_method") return 1;
+                
+                // Then by type priority
+                const typePriority = {
+                    "class_container": 1,
+                    "constructor": 2,
+                    "function": 3,
+                    "class_method": 4,
+                    "private_method": 5
+                };
+                
+                return (typePriority[a.type] || 99) - (typePriority[b.type] || 99);
+            });
+            
+            // Position nodes in a vertical layout
+            const nodeHeight = 50;  // Vertical space between nodes
+            const topMargin = 50;
+            
+            // First position main nodes in a vertical line
+            sortedNodes.forEach((node, index) => {
+                // Position nodes in the center
+                node.x = width / 2;
+                node.y = topMargin + (index * nodeHeight);
+                
+                // Fix node positions for vertical layout
+                node.fx = node.x;
+                node.fy = node.y;
+            });
+            
+            // Update node positions
+            node.attr("transform", d => `translate(${d.x},${d.y})`);
+            
+            // Update links with simple curved paths
+            link.attr("d", d => {
+                const source = graphData.nodes[d.source.id];
+                const target = graphData.nodes[d.target.id];
+                
+                // Create curved paths
+                return `M${source.x},${source.y}
+                        C${source.x},${(source.y + target.y) / 2}
+                         ${target.x},${(source.y + target.y) / 2}
+                         ${target.x},${target.y}`;
+            });
+            
+            // Stop the simulation
+            simulation.stop();
+            
+            // Add white background to text for better readability
+            node.selectAll("text").each(function() {
+                const text = d3.select(this);
+                
+                // Remove any existing backgrounds
+                text.selectAll("rect.text-bg").remove();
+                
+                // Get text dimensions
+                const bbox = text.node().getBBox();
+                
+                // Insert a white background rectangle behind the text
+                text.insert("rect", "text")
+                    .attr("class", "text-bg")
+                    .attr("x", bbox.x - 2)
+                    .attr("y", bbox.y - 2)
+                    .attr("width", bbox.width + 4)
+                    .attr("height", bbox.height + 4);
+            });
+            
+            isVerticalLayout = true;
         }
         
         // Handle node clicks
@@ -1090,8 +1213,13 @@ class FunctionVisualizer:
                            targetNode.parent_class === classNode.name;
                 }).style("display", "");
                 
-                // Re-run simulation to update layout
-                simulation.alpha(0.3).restart();
+                // Update the layout accordingly
+                if (isVerticalLayout) {
+                    applyVerticalLayout();
+                } else {
+                    // Re-run simulation to update layout
+                    simulation.alpha(0.3).restart();
+                }
             }
         }
         
@@ -1120,10 +1248,14 @@ class FunctionVisualizer:
             const detailsDiv = document.getElementById("functionDetails");
             const fnTitle = document.getElementById("selectedFunction");
             const fileInfo = document.getElementById("fileInfo");
+            const returnValueInfo = document.getElementById("returnValueInfo");
+            const exceptionInfo = document.getElementById("exceptionInfo");
             const paramsTable = document.getElementById("paramsTable").getElementsByTagName("tbody")[0];
             
             // Clear previous data
             paramsTable.innerHTML = "";
+            returnValueInfo.innerHTML = "";
+            exceptionInfo.innerHTML = "";
             
             // Update details
             if (d.type === "class_container") {
@@ -1140,17 +1272,54 @@ class FunctionVisualizer:
                 fnTitle.textContent = displayName + "()";
                 fileInfo.textContent = "File: " + d.filepath + ":" + d.line;
                 
-                // Add parameters
-                if (d.params.length > 0) {
-                    d.params.forEach(param => {
+                // Add return value if available
+                if (d.params.__return_value__) {
+                    returnValueInfo.innerHTML = `
+                        <h4>Return Value:</h4>
+                        <div class="return-value">
+                            <span class="param-value">${d.params.__return_value__[0]}</span>
+                            <span class="param-type">(${d.params.__return_value__[1]})</span>
+                        </div>
+                    `;
+                }
+                
+                // Add exception info if available
+                if (d.params.__exception__) {
+                    let exceptionHtml = `
+                        <h4 class="exception-title">Exception:</h4>
+                        <div class="exception-value">
+                            <span class="exception-text">${d.params.__exception__[0]}</span>
+                        </div>
+                    `;
+                    
+                    // Add traceback if available
+                    if (d.params.__traceback__) {
+                        exceptionHtml += `
+                            <h5>Traceback:</h5>
+                            <div class="traceback-info">
+                                ${d.params.__traceback__[0]}
+                            </div>
+                        `;
+                    }
+                    
+                    exceptionInfo.innerHTML = exceptionHtml;
+                }
+                
+                // Add parameters (excluding special params starting with __)
+                const standardParams = Object.entries(d.params).filter(
+                    ([key]) => !key.startsWith('__')
+                );
+                
+                if (standardParams.length > 0) {
+                    standardParams.forEach(([key, [value, type]]) => {
                         const row = paramsTable.insertRow();
                         const nameCell = row.insertCell(0);
                         const valueCell = row.insertCell(1);
                         const typeCell = row.insertCell(2);
                         
-                        nameCell.textContent = param.name;
-                        valueCell.textContent = param.value;
-                        typeCell.textContent = param.type;
+                        nameCell.textContent = key;
+                        valueCell.textContent = value;
+                        typeCell.textContent = type;
                     });
                 } else {
                     const row = paramsTable.insertRow();
@@ -1300,6 +1469,7 @@ class FunctionVisualizer:
         
         // Reset view button
         document.getElementById("resetBtn").addEventListener("click", () => {
+            // Reset zoom
             svg.transition().duration(750).call(
                 d3.zoom().transform,
                 d3.zoomIdentity
@@ -1328,12 +1498,24 @@ class FunctionVisualizer:
             
             link.attr("stroke-width", 1.5);
             
-            // Show all nodes
+            // Clear fixed positions
+            graphData.nodes.forEach(d => {
+                d.fx = null;
+                d.fy = null;
+            });
+            
+            // Expand all classes
             expandAllClasses();
             
             // Hide function details
             document.getElementById("functionDetails").style.display = "none";
+            
+            // Reset to force layout
+            initForceLayout();
         });
+        
+        // Vertical layout button
+        document.getElementById("verticalLayoutBtn").addEventListener("click", applyVerticalLayout);
         
         // Expand/collapse all classes functions
         function expandAllClasses() {
@@ -1351,6 +1533,10 @@ class FunctionVisualizer:
                 }
             });
         }
+        
+        // Add event listeners for expand/collapse all
+        document.getElementById("expandAllBtn").addEventListener("click", expandAllClasses);
+        document.getElementById("collapseAllBtn").addEventListener("click", collapseAllClasses);
         
         // Search functionality
         document.getElementById("searchInput").addEventListener("input", function() {
@@ -1413,10 +1599,6 @@ class FunctionVisualizer:
                 }
             });
         });
-        
-        // Add event listeners for expand/collapse all
-        document.getElementById("expandAllBtn").addEventListener("click", expandAllClasses);
-        document.getElementById("collapseAllBtn").addEventListener("click", collapseAllClasses);
     </script>
 </body>
 </html>
@@ -1424,6 +1606,7 @@ class FunctionVisualizer:
         
         print(f"Interactive HTML visualization generated: {output_path}")
         return output_path
+
 
 
 # Example decorators and helper functions for easy use
