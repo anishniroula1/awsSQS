@@ -717,18 +717,6 @@ class FunctionVisualizer:
             #collapseAllBtn:hover {
                 background-color: #f5ae00;
             }
-            #verticalLayoutBtn {
-                background-color: #ea4335;
-            }
-            #verticalLayoutBtn:hover {
-                background-color: #d62516;
-            }
-            #sequentialLayoutBtn {
-                background-color: #9334e6;
-            }
-            #sequentialLayoutBtn:hover {
-                background-color: #7a20c7;
-            }
             #verticalSequentialBtn {
                 background-color: #ff5722;
                 color: white;
@@ -844,9 +832,7 @@ class FunctionVisualizer:
                     <button id="resetBtn">Reset View</button>
                     <button id="expandAllBtn">Expand All Classes</button>
                     <button id="collapseAllBtn">Collapse All Classes</button>
-                    <button id="verticalLayoutBtn">Vertical Layout</button>
-                    <button id="sequentialLayoutBtn">Sequential Layout</button>
-                    <button id="verticalSequentialBtn">Vertical Sequential</button>
+                    <button id="verticalSequentialBtn">Vertical Layout</button>
                 </div>
                 <div>
                     <label for="searchInput">Search: </label>
@@ -1226,167 +1212,7 @@ class FunctionVisualizer:
                 // Hide link sequence labels in force layout
                 linkLabels.style("display", "none");
             }
-            
-            // Function to apply a simple vertical layout
-            function applyVerticalLayout() {
-                // Sort nodes by type (main methods first, then regular functions, etc)
-                const sortedNodes = [...graphData.nodes].sort((a, b) => {
-                    // Always put main method at the top
-                    if (a.type === "main_method") return -1;
-                    if (b.type === "main_method") return 1;
-                    
-                    // Then by type priority
-                    const typePriority = {
-                        "class_container": 1,
-                        "constructor": 2,
-                        "function": 3,
-                        "class_method": 4,
-                        "private_method": 5
-                    };
-                    
-                    return (typePriority[a.type] || 99) - (typePriority[b.type] || 99);
-                });
-                
-                // Position nodes in a vertical layout
-                const nodeHeight = 50;  // Vertical space between nodes
-                const topMargin = 50;
-                
-                // First position main nodes in a vertical line
-                sortedNodes.forEach((node, index) => {
-                    // Position nodes in the center
-                    node.x = width / 2;
-                    node.y = topMargin + (index * nodeHeight);
-                    
-                    // Fix node positions for vertical layout
-                    node.fx = node.x;
-                    node.fy = node.y;
-                });
-                
-                // Update node positions
-                node.attr("transform", d => `translate(${d.x},${d.y})`);
-                
-                // Update links with simple curved paths
-                link.attr("d", d => {
-                    const source = graphData.nodes[d.source.id];
-                    const target = graphData.nodes[d.target.id];
-                    
-                    // Create curved paths
-                    return `M${source.x},${source.y}
-                            C${source.x},${(source.y + target.y) / 2}
-                            ${target.x},${(source.y + target.y) / 2}
-                            ${target.x},${target.y}`;
-                });
-                
-                // Update link label positions
-                linkLabels.attr("x", d => (d.source.x + d.target.x) / 2)
-                    .attr("y", d => (d.source.y + d.target.y) / 2)
-                    .style("display", "");
-                
-                // Stop the simulation
-                simulation.stop();
-                
-                // Add white background to text for better readability
-                node.selectAll("text").each(function() {
-                    const text = d3.select(this);
-                    
-                    // Remove any existing backgrounds
-                    text.selectAll("rect.text-bg").remove();
-                    
-                    // Get text dimensions
-                    const bbox = text.node().getBBox();
-                    
-                    // Insert a white background rectangle behind the text
-                    text.insert("rect", "text")
-                        .attr("class", "text-bg")
-                        .attr("x", bbox.x - 2)
-                        .attr("y", bbox.y - 2)
-                        .attr("width", bbox.width + 4)
-                        .attr("height", bbox.height + 4);
-                });
-                
-                isVerticalLayout = true;
-                isSequentialLayout = false;
-                isSequentialVertical = false;
-            }
-            
-            // Function to apply a sequential layout based on execution order
-            function applySequentialLayout() {
-                // Sort nodes by sequence number
-                const sortedNodes = [...graphData.nodes].sort((a, b) => {
-                    // Handle infinity values - put them at the end
-                    if (a.sequence === Infinity && b.sequence === Infinity) return 0;
-                    if (a.sequence === Infinity) return 1;
-                    if (b.sequence === Infinity) return -1;
-                    return a.sequence - b.sequence;
-                });
-                
-                // Position nodes in a sequential horizontal layout
-                const nodeWidth = 120;  // Horizontal space between nodes
-                const leftMargin = 100;
-                const rowHeight = 100;  // Space between rows
-                const nodesPerRow = 5;  // Number of nodes per row
-                
-                // Position nodes in a grid pattern based on sequence
-                sortedNodes.forEach((node, index) => {
-                    const row = Math.floor(index / nodesPerRow);
-                    const col = index % nodesPerRow;
-                    
-                    // Position nodes in rows
-                    node.x = leftMargin + (col * nodeWidth);
-                    node.y = 100 + (row * rowHeight);
-                    
-                    // Fix node positions
-                    node.fx = node.x;
-                    node.fy = node.y;
-                });
-                
-                // Update node positions
-                node.attr("transform", d => `translate(${d.x},${d.y})`);
-                
-                // Update links with simple curved paths
-                link.attr("d", d => {
-                    const source = graphData.nodes[d.source.id];
-                    const target = graphData.nodes[d.target.id];
-                    
-                    // Create curved paths
-                    return `M${source.x},${source.y}
-                            C${source.x},${(source.y + target.y) / 2}
-                            ${target.x},${(source.y + target.y) / 2}
-                            ${target.x},${target.y}`;
-                });
-                
-                // Update link label positions
-                linkLabels.attr("x", d => (d.source.x + d.target.x) / 2)
-                    .attr("y", d => (d.source.y + d.target.y) / 2)
-                    .style("display", "");
-                
-                // Stop the simulation
-                simulation.stop();
-                
-                // Add white background to text for better readability
-                node.selectAll("text").each(function() {
-                    const text = d3.select(this);
-                    
-                    // Remove any existing backgrounds
-                    text.selectAll("rect.text-bg").remove();
-                    
-                    // Get text dimensions
-                    const bbox = text.node().getBBox();
-                    
-                    // Insert a white background rectangle behind the text
-                    text.insert("rect", "text")
-                        .attr("class", "text-bg")
-                        .attr("x", bbox.x - 2)
-                        .attr("y", bbox.y - 2)
-                        .attr("width", bbox.width + 4)
-                        .attr("height", bbox.height + 4);
-                });
-                
-                isVerticalLayout = false;
-                isSequentialLayout = true;
-                isSequentialVertical = false;
-            }
-            
+                 
             // Function to apply a vertical sequential layout based on execution order
             function applyVerticalSequentialLayout() {
                 // Sort nodes by sequence number
@@ -1559,11 +1385,7 @@ class FunctionVisualizer:
                 }
                 
                 // Update the layout accordingly
-                if (isVerticalLayout) {
-                    applyVerticalLayout();
-                } else if (isSequentialLayout) {
-                    applySequentialLayout();
-                } else if (isSequentialVertical) {
+                if (isSequentialVertical) {
                     applyVerticalSequentialLayout();
                 } else {
                     // Re-run simulation to update layout
@@ -1928,8 +1750,6 @@ class FunctionVisualizer:
         });
         
         // Layout buttons
-        document.getElementById("verticalLayoutBtn").addEventListener("click", applyVerticalLayout);
-        document.getElementById("sequentialLayoutBtn").addEventListener("click", applySequentialLayout);
         document.getElementById("verticalSequentialBtn").addEventListener("click", applyVerticalSequentialLayout);
         
         // Expand/collapse all classes functions
@@ -2055,7 +1875,6 @@ def run_with_tracing(func, *args, **kwargs):
         result = func(*args, **kwargs)
     finally:
         tracer.stop_tracing()
-        tracer.generate_mermaid_diagram()
         tracer.generate_html_visualization()
     return result
 
@@ -2071,7 +1890,6 @@ def trace_sequential(func):
         finally:
             tracer.stop_tracing()
             # Generate both visualizations
-            tracer.generate_mermaid_diagram('sequential_calls.md')
             tracer.generate_html_visualization('sequential_calls.html')
             print(f"Sequential function call visualization generated. Open 'sequential_calls.html' to view.")
         return result
@@ -2107,7 +1925,6 @@ def analyze_call_sequence(module_or_function, output_dir='.'):
                     exec(code, module_or_function.__dict__)
         finally:
             tracer.stop_tracing()
-            tracer.generate_mermaid_diagram('module_sequential_calls.md')
             html_path = tracer.generate_html_visualization('module_sequential_calls.html')
             print(f"Module sequence analysis complete. Open '{html_path}' to view.")
             return html_path
