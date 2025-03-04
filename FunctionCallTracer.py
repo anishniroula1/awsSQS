@@ -325,106 +325,6 @@ class FunctionCallTracer:
         """Stop tracing function calls."""
         sys.settrace(None)
     
-    def generate_mermaid_diagram(self, filename: str = 'function_calls.md'):
-        """Generate a Mermaid.js flowchart diagram of the function calls."""
-        full_path = os.path.join(self.output_dir, filename)
-        
-        with open(full_path, 'w') as f:
-            f.write("# Function Call Diagram\n\n")
-            f.write("```mermaid\nflowchart TD\n")
-            
-            # Create nodes for each function
-            nodes = set()
-            for parent in self.call_graph:
-                nodes.add(parent)
-                for child in self.call_graph[parent]:
-                    nodes.add(child)
-            
-            # Generate clean node IDs to avoid syntax issues
-            node_ids = {}
-            for i, node in enumerate(nodes):
-                # Create a short, clean ID for each node
-                file, func, line = node.split(':', 2)
-                clean_func = func.replace('__', '')
-                node_ids[node] = f"func{i}_{clean_func}"
-            
-            # Sort nodes by sequence number for sequential display
-            sorted_nodes = sorted(nodes, key=lambda node: self.call_sequence.get(node, float('inf')))
-            
-            # Write node definitions with parameters and sequence numbers
-            for node in sorted_nodes:
-                file, func, line = node.split(':', 2)
-                node_id = node_ids[node]
-                
-                # Clean up function name for display
-                display_func = func
-                
-                # Format parameters nicely
-                param_text = ""
-                if node in self.func_params and self.func_params[node]:
-                    # Get sequence number for display
-                    sequence = self.func_params[node].get('__sequence__', ('?', 'int'))[0]
-                    
-                    params = []
-                    params.append(f"sequence: {sequence}")
-                    for name, (value, type_name) in self.func_params[node].items():
-                        if name == '__sequence__':
-                            continue  # Skip, already displayed at top
-                        params.append(f"{name}: {value} ({type_name})")
-                    
-                    # Format parameters in a readable way
-                    if params:
-                        param_text = "<br>" + "<br>".join(params)
-                
-                # Write node with function name, sequence number and parameters
-                label = f"{func}(){param_text}"
-                if func != "__init__":  # Add filename for non-constructor methods
-                    label = f"{os.path.basename(file)}<br>{label}"
-                    
-                f.write(f'    {node_id}["{label}"]\n')
-            
-            # Write edges
-            for parent in self.call_graph:
-                parent_id = node_ids[parent]
-                
-                # Sort children by sequence number for sequential display
-                sorted_children = sorted(self.call_graph[parent], 
-                                         key=lambda child: self.call_sequence.get(child, float('inf')))
-                
-                for child in sorted_children:
-                    child_id = node_ids[child]
-                    # Get sequence numbers for edge labels
-                    parent_seq = self.call_sequence.get(parent, '?')
-                    child_seq = self.call_sequence.get(child, '?')
-                    f.write(f"    {parent_id} -->|{parent_seq}->{child_seq}| {child_id}\n")
-            
-            # Add better styling
-            f.write("\n    %% Styling\n")
-            f.write("    classDef default fill:#f9f9f9,stroke:#333,stroke-width:1px\n")
-            f.write("    classDef mainMethod fill:#d4e5ff,stroke:#4285f4,stroke-width:2px\n")
-            f.write("    classDef utilMethod fill:#e6f4ea,stroke:#34a853,stroke-width:1px\n")
-            f.write("    classDef privateMethod fill:#fef7e0,stroke:#fbbc05,stroke-width:1px\n")
-            f.write("    classDef initMethod fill:#fce8e6,stroke:#ea4335,stroke-width:1px\n")
-            
-            # Apply styles based on function name patterns
-            for node in nodes:
-                file, func, line = node.split(':', 2)
-                node_id = node_ids[node]
-                
-                if func == "main" or func.startswith("main_"):
-                    f.write(f"    class {node_id} mainMethod\n")
-                elif func == "__init__":
-                    f.write(f"    class {node_id} initMethod\n")
-                elif func.startswith("__") or '_' in func and not func.startswith("_"):
-                    f.write(f"    class {node_id} privateMethod\n")
-                else:
-                    f.write(f"    class {node_id} utilMethod\n")
-            
-            f.write("```\n")
-        
-        print(f"Mermaid diagram generated: {full_path}")
-        return full_path
-    
     def generate_html_visualization(self, filename: str = 'function_calls.html'):
         """Generate an interactive HTML visualization."""
         return FunctionVisualizer.generate_html(self, filename)
@@ -1862,7 +1762,6 @@ def trace_and_visualize(func):
             result = func(*args, **kwargs)
         finally:
             tracer.stop_tracing()
-            tracer.generate_mermaid_diagram()
             tracer.generate_html_visualization()
         return result
     return wrapper
