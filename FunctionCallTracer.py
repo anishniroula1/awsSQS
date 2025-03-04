@@ -1754,10 +1754,10 @@ class FunctionVisualizer:
         return output_path
 
 # Example decorators and helper functions for easy use
-def trace_and_visualize(func, include_stdlib=[]):
+def trace_and_visualize(func):
     """Decorator to trace and visualize a function call."""
     def wrapper(*args, **kwargs):
-        tracer = FunctionCallTracer(include_stdlib=include_stdlib)
+        tracer = FunctionCallTracer()
         tracer.start_tracing()
         try:
             result = func(*args, **kwargs)
