@@ -1,5 +1,5 @@
 # Import the tracing tool
-from FunctionCallTracer import FunctionCallTracerWithReturn, trace_and_visualize, run_with_tracing
+from FunctionCallTracerWithReturns import FunctionCallTracerWithReturn, trace_and_visualize, run_with_tracing
 
 # Define some example functions
 def __inner_calculation(x, y):

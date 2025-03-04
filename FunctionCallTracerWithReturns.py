@@ -1,15 +1,13 @@
-import functools
 import sys
 import os
-import inspect
-from typing import Dict, List, Tuple, Set, Optional
+from typing import Set
 import json
-import time
+import functools
 
-class FunctionCallTracer:
+class FunctionCallTracerWithReturn:
     def __init__(self, output_dir: str = '.', include_stdlib: list = [], max_depth: int = None):
         self.output_dir = output_dir
-        self.include_stdlib = include_stdlib
+        self.include_stdlib = include_stdlib # pass library path as list of string
         self.max_depth = max_depth  # Maximum call depth to trace
         self.call_graph = {}  # Store function calls and their relationships
         self.func_params = {}  # Store function parameters
@@ -221,16 +219,104 @@ class FunctionCallTracer:
         
         self.func_params[func_id] = params
         
+        # Associate function ID with call frame for return value tracking
+        self.frame_to_func_id = getattr(self, 'frame_to_func_id', {})
+        self.frame_to_func_id[id(frame)] = func_id
+        
         # Update stack
         self.current_stack.append(func_id)
         
-        return self.trace_calls
-    
-    def trace_returns(self, frame, event, arg):
-        """Trace function returns to maintain the stack."""
-        if event == 'return' and self.current_stack:
-            self.current_stack.pop()
-        return self.trace_returns
+        # Return function to handle return and exception events
+        return self.trace_events
+
+    def trace_events(self, frame, event, arg):
+        """
+        Trace function returns and exceptions.
+        
+        Args:
+            frame: The current stack frame
+            event: The event type ('call', 'line', 'return', 'exception')
+            arg: For 'return' - the return value; for 'exception' - a tuple (exception, value, traceback)
+        """
+        frame_id = id(frame)
+        
+        if event == 'return' and hasattr(self, 'frame_to_func_id') and frame_id in self.frame_to_func_id:
+            func_id = self.frame_to_func_id[frame_id]
+            
+            # Store the return value
+            return_value = arg  # 'arg' contains the return value in 'return' events
+            
+            try:
+                # Get a representation of the return value
+                return_repr = repr(return_value)
+                return_type = type(return_value).__name__
+                
+                # Truncate very long representations
+                if len(return_repr) > 1000:
+                    return_repr = return_repr[:997] + "..."
+                
+                # Store with the function's parameters
+                if func_id in self.func_params:
+                    self.func_params[func_id]['__return_value__'] = (return_repr, return_type)
+                
+                # Clean up the frame tracking to avoid memory leaks
+                del self.frame_to_func_id[frame_id]
+            except Exception as e:
+                # If we can't represent the return value, at least note that there was one
+                if func_id in self.func_params:
+                    self.func_params[func_id]['__return_value__'] = (f"<unprintable: {str(e)}>", "unknown")
+            
+            # Update stack on return
+            if self.current_stack:
+                self.current_stack.pop()
+        
+        elif event == 'exception' and hasattr(self, 'frame_to_func_id') and frame_id in self.frame_to_func_id:
+            # For exceptions, arg is (exception, value, traceback)
+            exc_type, exc_value, exc_traceback = arg
+            func_id = self.frame_to_func_id[frame_id]
+            
+            # Create a representation of the exception
+            try:
+                exc_name = exc_type.__name__
+                exc_msg = str(exc_value)
+                
+                # Truncate very long exception messages
+                if len(exc_msg) > 500:
+                    exc_msg = exc_msg[:497] + "..."
+                
+                # Store with the function's parameters
+                if func_id in self.func_params:
+                    self.func_params[func_id]['__exception__'] = (f"{exc_name}: {exc_msg}", "exception")
+                    
+                    # Set a flag to indicate this function raised an exception
+                    self.func_params[func_id]['__has_exception__'] = ('True', 'bool')
+                    
+                    # Optionally capture traceback details
+                    tb_entries = []
+                    tb = exc_traceback
+                    while tb:
+                        frame = tb.tb_frame
+                        filename = frame.f_code.co_filename
+                        name = frame.f_code.co_name
+                        lineno = tb.tb_lineno
+                        tb_entries.append(f"{os.path.basename(filename)}:{name}:{lineno}")
+                        tb = tb.tb_next
+                    
+                    if tb_entries:
+                        tb_str = " -> ".join(tb_entries)
+                        if len(tb_str) > 500:
+                            tb_str = tb_str[:497] + "..."
+                        self.func_params[func_id]['__traceback__'] = (tb_str, "traceback")
+                
+                # Don't clean up the frame tracking yet since the function hasn't returned
+            except Exception as e:
+                # If we can't represent the exception, at least note that there was one
+                if func_id in self.func_params:
+                    self.func_params[func_id]['__exception__'] = (f"<unprintable exception: {str(e)}>", "exception")
+                    self.func_params[func_id]['__has_exception__'] = ('True', 'bool')
+        
+        # Continue tracing
+        return self.trace_events
     
     def start_tracing(self):
         """Start tracing function calls."""
@@ -242,9 +328,10 @@ class FunctionCallTracer:
     
     def generate_html_visualization(self, filename: str = 'function_calls.html'):
         """Generate an interactive HTML visualization."""
-        return FunctionVisualizer.generate_html(self, filename)  
+        return FunctionVisualizerWithReturn.generate_html(self, filename)
 
-class FunctionVisualizer:
+
+class FunctionVisualizerWithReturn:
     """Creates interactive HTML visualizations from function call data."""
     
     @staticmethod
@@ -354,7 +441,7 @@ class FunctionVisualizer:
                 node_type = "function"
                 parent_class = None
             
-            # Get parameters and sequence number
+            # Get all params including special ones
             params = {}
             if node_id in tracer.func_params:
                 params = tracer.func_params[node_id]
@@ -363,8 +450,8 @@ class FunctionVisualizer:
             sequence = float('inf')
             if node_id in tracer.call_sequence:
                 sequence = tracer.call_sequence[node_id]
-            elif params.get('__sequence__'):
-                sequence = int(params['__sequence__'][0])
+            elif "__sequence__" in params:
+                sequence = int(params["__sequence__"][0])
                 
             # If this is a class method, update the class's sequence to the earliest method call
             if parent_class and class_name in class_nodes:
@@ -417,460 +504,514 @@ class FunctionVisualizer:
         # Generate HTML with embedded D3.js visualization
         with open(output_path, 'w') as f:
             f.write('''
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <title>Function Call Visualization</title>
-    <script src="https://d3js.org/d3.v7.min.js"></script>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: #f5f5f5;
-        }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        h1 {
-            color: #333;
-            text-align: center;
-            margin-bottom: 30px;
-        }
-        #graph {
-            background-color: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            overflow: hidden;
-            min-height: 600px;
-        }
-        .tooltip {
-            position: absolute;
-            background-color: #fff;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            padding: 10px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-            font-size: 12px;
-            pointer-events: none;
-            opacity: 0;
-            transition: opacity 0.3s;
-            max-width: 300px;
-            z-index: 1000;
-        }
-        .param-name {
-            font-weight: bold;
-            color: #444;
-        }
-        .param-value {
-            color: #0066cc;
-        }
-        .param-type {
-            color: #666;
-            font-style: italic;
-        }
-        .node circle {
-            stroke-width: 2px;
-        }
-        .node text {
-            font-size: 12px;
-        }
-        .text-bg {
-            fill: white;
-            fill-opacity: 0.9;
-        }
-        .link {
-            stroke: #999;
-            stroke-opacity: 0.6;
-            stroke-width: 1.5px;
-            fill: none;
-        }
-        .sequence-label {
-            font-size: 10px;
-            fill: #666;
-        }
-        .controls {
-            margin-bottom: 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-        }
-        .controls-left {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            margin-bottom: 10px;
-        }
-        .controls button {
-            background-color: #4285f4;
-            color: white;
-            border: none;
-            padding: 8px 12px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-            white-space: nowrap;
-        }
-        .controls button:hover {
-            background-color: #3367d6;
-        }
-        #expandAllBtn {
-            background-color: #34a853;
-        }
-        #expandAllBtn:hover {
-            background-color: #2d8e47;
-        }
-        #collapseAllBtn {
-            background-color: #fbbc05;
-            color: #333;
-        }
-        #collapseAllBtn:hover {
-            background-color: #f5ae00;
-        }
-        #verticalSequentialBtn {
-            background-color: #ff5722;
-            color: white;
-        }
-        #verticalSequentialBtn:hover {
-            background-color: #e64a19;
-        }
-        .legend {
-            display: flex;
-            justify-content: center;
-            margin-top: 10px;
-            font-size: 12px;
-            flex-wrap: wrap;
-        }
-        .legend-item {
-            display: flex;
-            align-items: center;
-            margin: 0 10px;
-        }
-        .legend-color {
-            width: 12px;
-            height: 12px;
-            margin-right: 5px;
-        }
-        .legend-color.circle {
-            border-radius: 50%;
-        }
-        .legend-color.square {
-            border-radius: 3px;
-        }
-        
-        /* Nodes and collapsing styles */
-        .node[data-collapsed="true"] .expand-icon {
-            cursor: pointer;
-        }
-        .node[data-collapsed="false"] .expand-icon {
-            cursor: pointer;
-        }
-        .function-details {
-            margin-top: 20px;
-            background-color: white;
-            border-radius: 8px;
-            padding: 15px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            display: none;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 10px;
-        }
-        th, td {
-            text-align: left;
-            padding: 8px;
-            border-bottom: 1px solid #ddd;
-        }
-        th {
-            background-color: #f0f0f0;
-        }
-        
-        /* Sequence number badge */
-        .sequence-badge {
-            display: inline-block;
-            background: #666;
-            color: white;
-            border-radius: 50%;
-            width: 20px;
-            height: 20px;
-            text-align: center;
-            line-height: 20px;
-            margin-right: 5px;
-            font-size: 11px;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Function Call Visualization</h1>
-        
-        <div class="controls">
-            <div class="controls-left">
-                <button id="resetBtn">Reset View</button>
-                <button id="expandAllBtn">Expand All Classes</button>
-                <button id="collapseAllBtn">Collapse All Classes</button>
-                <button id="verticalSequentialBtn">Vertical Sequence Layout</button>
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <title>Function Call Visualization</title>
+        <script src="https://d3js.org/d3.v7.min.js"></script>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                margin: 0;
+                padding: 0;
+                background-color: #f5f5f5;
+            }
+            .container {
+                max-width: 1200px;
+                margin: 0 auto;
+                padding: 20px;
+            }
+            h1 {
+                color: #333;
+                text-align: center;
+                margin-bottom: 30px;
+            }
+            #graph {
+                background-color: white;
+                border-radius: 8px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                overflow: hidden;
+                min-height: 600px;
+            }
+            .tooltip {
+                position: absolute;
+                background-color: #fff;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                padding: 10px;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+                font-size: 12px;
+                pointer-events: none;
+                opacity: 0;
+                transition: opacity 0.3s;
+                max-width: 300px;
+                z-index: 1000;
+            }
+            .param-name {
+                font-weight: bold;
+                color: #444;
+            }
+            .param-value {
+                color: #0066cc;
+            }
+            .param-type {
+                color: #666;
+                font-style: italic;
+            }
+            .node circle {
+                stroke-width: 2px;
+            }
+            .node text {
+                font-size: 12px;
+            }
+            .text-bg {
+                fill: white;
+                fill-opacity: 0.9;
+            }
+            .link {
+                stroke: #999;
+                stroke-opacity: 0.6;
+                stroke-width: 1.5px;
+                fill: none;
+            }
+            .sequence-label {
+                font-size: 10px;
+                fill: #666;
+            }
+            .controls {
+                margin-bottom: 20px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                flex-wrap: wrap;
+            }
+            .controls-left {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                margin-bottom: 10px;
+            }
+            .controls button {
+                background-color: #4285f4;
+                color: white;
+                border: none;
+                padding: 8px 12px;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 14px;
+                white-space: nowrap;
+            }
+            .controls button:hover {
+                background-color: #3367d6;
+            }
+            #expandAllBtn {
+                background-color: #34a853;
+            }
+            #expandAllBtn:hover {
+                background-color: #2d8e47;
+            }
+            #collapseAllBtn {
+                background-color: #fbbc05;
+                color: #333;
+            }
+            #collapseAllBtn:hover {
+                background-color: #f5ae00;
+            }
+            #verticalSequentialBtn {
+                background-color: #ff5722;
+                color: white;
+            }
+            #verticalSequentialBtn:hover {
+                background-color: #e64a19;
+            }
+            .legend {
+                display: flex;
+                justify-content: center;
+                margin-top: 10px;
+                font-size: 12px;
+                flex-wrap: wrap;
+            }
+            .legend-item {
+                display: flex;
+                align-items: center;
+                margin: 0 10px;
+            }
+            .legend-color {
+                width: 12px;
+                height: 12px;
+                margin-right: 5px;
+            }
+            .legend-color.circle {
+                border-radius: 50%;
+            }
+            .legend-color.square {
+                border-radius: 3px;
+            }
+            
+            /* Nodes and collapsing styles */
+            .node[data-collapsed="true"] .expand-icon {
+                cursor: pointer;
+            }
+            .node[data-collapsed="false"] .expand-icon {
+                cursor: pointer;
+            }
+            .function-details {
+                margin-top: 20px;
+                background-color: white;
+                border-radius: 8px;
+                padding: 15px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                display: none;
+            }
+            table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-top: 10px;
+            }
+            th, td {
+                text-align: left;
+                padding: 8px;
+                border-bottom: 1px solid #ddd;
+            }
+            th {
+                background-color: #f0f0f0;
+            }
+            
+            /* Exception styling */
+            .exception-title {
+                color: #d9534f;
+                margin-top: 15px;
+                margin-bottom: 5px;
+            }
+            .exception-text {
+                color: #d9534f;
+                font-family: monospace;
+            }
+            .traceback-info {
+                font-family: monospace;
+                font-size: 12px;
+                white-space: pre-wrap;
+                background-color: #f8f8f8;
+                padding: 5px;
+                border-radius: 4px;
+                border-left: 3px solid #d9534f;
+                margin-top: 5px;
+            }
+            
+            /* Return value styling */
+            .return-value {
+                font-family: monospace;
+                background-color: #f8f8f8;
+                padding: 5px;
+                border-radius: 4px;
+                border-left: 3px solid #4285f4;
+                margin-top: 5px;
+            }
+            
+            /* Sequence number badge */
+            .sequence-badge {
+                display: inline-block;
+                background: #666;
+                color: white;
+                border-radius: 50%;
+                width: 20px;
+                height: 20px;
+                text-align: center;
+                line-height: 20px;
+                margin-right: 5px;
+                font-size: 11px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>Function Call Visualization</h1>
+            
+            <div class="controls">
+                <div class="controls-left">
+                    <button id="resetBtn">Reset View</button>
+                    <button id="expandAllBtn">Expand All Classes</button>
+                    <button id="collapseAllBtn">Collapse All Classes</button>
+                    <button id="verticalSequentialBtn">Vertical Layout</button>
+                </div>
+                <div>
+                    <label for="searchInput">Search: </label>
+                    <input type="text" id="searchInput" placeholder="Function name...">
+                </div>
             </div>
-            <div>
-                <label for="searchInput">Search: </label>
-                <input type="text" id="searchInput" placeholder="Function name...">
+            
+            <div id="graph"></div>
+            
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="legend-color square" style="background-color: #673ab7;"></div>
+                    <span>Classes (click to expand/collapse)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color circle" style="background-color: #4285f4;"></div>
+                    <span>Main Methods</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color circle" style="background-color: #34a853;"></div>
+                    <span>Regular Functions</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color circle" style="background-color: #fbbc05;"></div>
+                    <span>Private Methods</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color circle" style="background-color: #ea4335;"></div>
+                    <span>Constructors</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color circle" style="background-color: #9334e6;"></div>
+                    <span>Class Methods</span>
+                </div>
+            </div>
+            
+            <div id="functionDetails" class="function-details">
+                <h3 id="selectedFunction">Function Details</h3>
+                <p id="fileInfo">File: </p>
+                <p id="sequenceInfo">Sequence: </p>
+                <div id="returnValueInfo"></div>
+                <div id="exceptionInfo"></div>
+                <h4>Parameters:</h4>
+                <table id="paramsTable">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Value</th>
+                            <th>Type</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
             </div>
         </div>
         
-        <div id="graph"></div>
-        
-        <div class="legend">
-            <div class="legend-item">
-                <div class="legend-color square" style="background-color: #673ab7;"></div>
-                <span>Classes (click to expand/collapse)</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color circle" style="background-color: #4285f4;"></div>
-                <span>Main Methods</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color circle" style="background-color: #34a853;"></div>
-                <span>Regular Functions</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color circle" style="background-color: #fbbc05;"></div>
-                <span>Private Methods</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color circle" style="background-color: #ea4335;"></div>
-                <span>Constructors</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color circle" style="background-color: #9334e6;"></div>
-                <span>Class Methods</span>
-            </div>
-        </div>
-        
-        <div id="functionDetails" class="function-details">
-            <h3 id="selectedFunction">Function Details</h3>
-            <p id="fileInfo">File: </p>
-            <p id="sequenceInfo">Sequence: </p>
-            <h4>Parameters:</h4>
-            <table id="paramsTable">
-                <thead>
-                    <tr>
-                        <th>Name</th>
-                        <th>Value</th>
-                        <th>Type</th>
-                    </tr>
-                </thead>
-                <tbody></tbody>
-            </table>
-        </div>
-    </div>
-    
-    <div class="tooltip" id="tooltip"></div>
+        <div class="tooltip" id="tooltip"></div>
 
-    <script>
-        // Graph data from Python
-        const graphData = ''' + json.dumps(graph_data) + ''';
-        
-        // Color mapping by node type
-        const colorMap = {
-            main_method: "#4285f4",
-            function: "#34a853", 
-            private_method: "#fbbc05",
-            constructor: "#ea4335",
-            class_method: "#9334e6",
-            class_container: "#673ab7"
-        };
-        
-        // Set up the SVG
-        const width = document.getElementById("graph").clientWidth;
-        const height = 600;
-        
-        const svg = d3.select("#graph")
-            .append("svg")
-            .attr("width", width)
-            .attr("height", height)
-            .attr("viewBox", [0, 0, width, height])
-            .call(d3.zoom().on("zoom", (event) => {
-                g.attr("transform", event.transform);
-            }));
+        <script>
+            // Graph data from Python
+            const graphData = ''' + json.dumps(graph_data) + ''';
             
-        const g = svg.append("g");
-        
-        // Create links with curved paths
-        const link = g.append("g")
-            .selectAll("path")
-            .data(graphData.links)
-            .enter()
-            .append("path")
-            .attr("class", "link")
-            .attr("marker-end", "url(#arrowhead)");
-        
-        // Create arrowhead marker
-        svg.append("defs").append("marker")
-            .attr("id", "arrowhead")
-            .attr("viewBox", "0 -5 10 10")
-            .attr("refX", 20)
-            .attr("refY", 0)
-            .attr("markerWidth", 6)
-            .attr("markerHeight", 6)
-            .attr("orient", "auto")
-            .append("path")
-            .attr("d", "M0,-5L10,0L0,5")
-            .attr("fill", "#999");
-        
-        // Create labels for sequence numbers on the links
-        const linkLabels = g.append("g")
-            .selectAll(".link-label")
-            .data(graphData.links)
-            .enter()
-            .append("text")
-            .attr("class", "sequence-label")
-            .attr("text-anchor", "middle")
-            .attr("dy", -5)
-            .text(d => {
-                if (d.sourceSeq !== undefined && d.targetSeq !== undefined) {
-                    return `${d.sourceSeq}→${d.targetSeq}`;
-                }
-                return "";
-            })
-            .style("display", "none"); // Hide initially
-        
-        // Create nodes with proper formatting
-        const node = g.append("g")
-            .selectAll(".node")
-            .data(graphData.nodes)
-            .enter()
-            .append("g")
-            .attr("class", d => `node ${d.type}`)
-            .attr("data-collapsed", d => d.collapsed)
-            .call(d3.drag()
-                .on("start", dragstarted)
-                .on("drag", dragged)
-                .on("end", dragended))
-            .on("click", handleNodeClick);
-        
-        // Add appropriate shape to nodes
-        node.each(function(d) {
-            const nodeElement = d3.select(this);
+            // Color mapping by node type
+            const colorMap = {
+                main_method: "#4285f4",
+                function: "#34a853", 
+                private_method: "#fbbc05",
+                constructor: "#ea4335",
+                class_method: "#9334e6",
+                class_container: "#673ab7"
+            };
             
-            if (d.type === "class_container") {
-                // Use rectangles for class containers
-                nodeElement.append("rect")
-                    .attr("width", 20)
-                    .attr("height", 20)
-                    .attr("rx", 4)
-                    .attr("ry", 4)
-                    .attr("x", -10)
-                    .attr("y", -10)
-                    .attr("fill", colorMap[d.type])
-                    .attr("stroke", d3.rgb(colorMap[d.type]).darker(0.5))
-                    .attr("stroke-width", 2);
+            // Set up the SVG
+            const width = document.getElementById("graph").clientWidth;
+            const height = 600;
+            
+            const svg = d3.select("#graph")
+                .append("svg")
+                .attr("width", width)
+                .attr("height", height)
+                .attr("viewBox", [0, 0, width, height])
+                .call(d3.zoom().on("zoom", (event) => {
+                    g.attr("transform", event.transform);
+                }));
                 
-                // Add a + symbol for collapsed class
-                nodeElement.append("text")
-                    .attr("class", "expand-icon")
-                    .attr("text-anchor", "middle")
-                    .attr("dominant-baseline", "central")
-                    .attr("font-size", 12)
-                    .attr("font-weight", "bold")
-                    .attr("fill", "white")
-                    .text("+");
-            } else {
-                // Use circles for functions and methods
-                nodeElement.append("circle")
-                    .attr("r", 10)
-                    .attr("fill", colorMap[d.type])
-                    .attr("stroke", d3.rgb(colorMap[d.type]).darker(0.5))
-                    .attr("stroke-width", 2);
+            const g = svg.append("g");
+            
+            // Create links with curved paths
+            const link = g.append("g")
+                .selectAll("path")
+                .data(graphData.links)
+                .enter()
+                .append("path")
+                .attr("class", "link");
+            
+            // Create arrowhead marker
+            svg.append("defs").append("marker")
+                .attr("id", "arrowhead")
+                .attr("viewBox", "0 -5 10 10")
+                .attr("refX", 20)
+                .attr("refY", 0)
+                .attr("markerWidth", 6)
+                .attr("markerHeight", 6)
+                .attr("orient", "auto")
+                .append("path")
+                .attr("d", "M0,-5L10,0L0,5")
+                .attr("fill", "#999");
+            
+            // Create nodes with proper formatting
+            const node = g.append("g")
+                .selectAll(".node")
+                .data(graphData.nodes)
+                .enter()
+                .append("g")
+                .attr("class", d => `node ${d.type}`)
+                .attr("data-collapsed", d => d.collapsed)
+                .call(d3.drag()
+                    .on("start", dragstarted)
+                    .on("drag", dragged)
+                    .on("end", dragended))
+                .on("click", handleNodeClick);
+            
+            // Add appropriate shape to nodes
+            node.each(function(d) {
+                const nodeElement = d3.select(this);
                 
-                // Add sequence number inside the circle for better visibility
-                if (d.sequence !== Infinity) {
+                if (d.type === "class_container") {
+                    // Use rectangles for class containers
+                    nodeElement.append("rect")
+                        .attr("width", 20)
+                        .attr("height", 20)
+                        .attr("rx", 4)
+                        .attr("ry", 4)
+                        .attr("x", -10)
+                        .attr("y", -10)
+                        .attr("fill", colorMap[d.type])
+                        .attr("stroke", d3.rgb(colorMap[d.type]).darker(0.5))
+                        .attr("stroke-width", 2);
+                    
+                    // Add a + symbol for collapsed class
                     nodeElement.append("text")
-                        .attr("class", "sequence-number")
+                        .attr("class", "expand-icon")
                         .attr("text-anchor", "middle")
                         .attr("dominant-baseline", "central")
-                        .attr("font-size", 8)
+                        .attr("font-size", 12)
                         .attr("font-weight", "bold")
                         .attr("fill", "white")
-                        .text(d.sequence);
-                }
-            }
-        });
-        
-        // Add labels to nodes with sequence numbers
-        node.append("text")
-            .attr("dx", 15)
-            .attr("dy", 5)
-            .text(d => {
-                let displayText = "";
-                if (d.type === "class_container") {
-                    displayText = `Class ${d.name}`;
-                } else if (d.parent_class) {
-                    displayText = `${d.parent_class}.${d.name}()`;
+                        .text("+");
                 } else {
-                    displayText = d.name + "()";
+                    // Use circles for functions and methods
+                    nodeElement.append("circle")
+                        .attr("r", 10)
+                        .attr("fill", d => {
+                            // Use red for nodes with exceptions
+                            if (d.params.__has_exception__) {
+                                return "#d9534f";  // Red for exceptions
+                            }
+                            return colorMap[d.type];
+                        })
+                        .attr("stroke", d => {
+                            if (d.params.__has_exception__) {
+                                return "#a94442";  // Darker red for exception stroke
+                            }
+                            return d3.rgb(colorMap[d.type]).darker(0.5);
+                        })
+                        .attr("stroke-width", 2);
+                    
+                    // Add sequence number inside the circle for better visibility
+                    if (d.sequence !== Infinity) {
+                        nodeElement.append("text")
+                            .attr("class", "sequence-number")
+                            .attr("text-anchor", "middle")
+                            .attr("dominant-baseline", "central")
+                            .attr("font-size", 8)
+                            .attr("font-weight", "bold")
+                            .attr("fill", "white")
+                            .text(d.sequence);
+                    }
                 }
-                
-                // Add sequence number prefix if available and not infinity
-                if (d.sequence !== Infinity) {
-                    displayText = `[${d.sequence}] ${displayText}`;
-                }
-                
-                return displayText;
             });
-        
-        // Set up the simulation
-        const simulation = d3.forceSimulation(graphData.nodes)
-            .force("link", d3.forceLink(graphData.links).id(d => d.id).distance(100))
-            .force("charge", d3.forceManyBody().strength(-300))
-            .force("center", d3.forceCenter(width / 2, height / 2))
-            .force("collide", d3.forceCollide().radius(50));
-        
-        // Flags to track layout modes
-        let isVerticalLayout = false;
-        let isSequentialLayout = false;
-        let isSequentialVertical = false;
-        
-        // Initialize visibility based on collapsed classes
-        initializeVisibility();
-        
-        // Tooltip
-        const tooltip = d3.select("#tooltip");
-        
-        node.on("mouseover", function(event, d) {
-            // Show tooltip
-            tooltip.transition().duration(200).style("opacity", .9);
             
-            // Create tooltip content
-            let tooltipContent = "";
+            // Add labels to nodes with sequence numbers
+            node.append("text")
+                .attr("dx", 15)
+                .attr("dy", 5)
+                .text(d => {
+                    let displayText = "";
+                    if (d.type === "class_container") {
+                        displayText = `Class ${d.name}`;
+                    } else if (d.parent_class) {
+                        displayText = `${d.parent_class}.${d.name}()`;
+                    } else {
+                        displayText = d.name + "()";
+                    }
+                    
+                    // Add sequence number prefix if available and not infinity
+                    if (d.sequence !== Infinity) {
+                        displayText = `[${d.sequence}] ${displayText}`;
+                    }
+                    
+                    return displayText;
+                });
+                
+            // Add sequence numbers to links
+            const linkLabels = g.append("g")
+                .selectAll(".link-label")
+                .data(graphData.links)
+                .enter()
+                .append("text")
+                .attr("class", "sequence-label")
+                .attr("text-anchor", "middle")
+                .attr("dy", -5)
+                .text(d => {
+                    return `${d.sourceSeq}→${d.targetSeq}`;
+                });
+                
+            // Tooltip
+            const tooltip = d3.select("#tooltip");
             
-            if (d.type === "class_container") {
-                tooltipContent = `<strong>Class ${d.name}</strong><br/>`;
-                tooltipContent += `Contains ${d.methods.length} methods<br/>`;
-                if (d.sequence !== Infinity) {
-                    tooltipContent += `First called at sequence: <strong>${d.sequence}</strong><br/>`;
+            // Set up the simulation
+            const simulation = d3.forceSimulation(graphData.nodes)
+                .force("link", d3.forceLink(graphData.links).id(d => d.id).distance(100))
+                .force("charge", d3.forceManyBody().strength(-300))
+                .force("center", d3.forceCenter(width / 2, height / 2))
+                .force("collide", d3.forceCollide().radius(50));
+                
+            // Flags to track layout modes
+            let isVerticalLayout = false;
+            let isSequentialLayout = false;
+            let isSequentialVertical = false;
+            
+            // Initialize the visualization with the force layout
+            initForceLayout();
+                
+            // Initialize visibility based on collapsed classes
+            initializeVisibility();
+            
+            node.on("mouseover", function(event, d) {
+                // Show tooltip
+                tooltip.transition().duration(200).style("opacity", .9);
+                
+                // Create tooltip content
+                let tooltipContent = "";
+                
+                if (d.type === "class_container") {
+                    tooltipContent = `<strong>Class ${d.name}</strong><br/>`;
+                    tooltipContent += `Contains ${d.methods.length} methods<br/>`;
+                    if (d.sequence !== Infinity) {
+                        tooltipContent += `First called at sequence: <strong>${d.sequence}</strong><br/>`;
+                    }
+                } else if (d.parent_class) {
+                    tooltipContent = `<strong>${d.parent_class}.${d.name}()</strong><br/>`;
+                    if (d.sequence !== Infinity) {
+                        tooltipContent += `Sequence: <strong>${d.sequence}</strong><br/>`;
+                    }
+                } else {
+                    tooltipContent = `<strong>${d.name}()</strong><br/>`;
+                    if (d.sequence !== Infinity) {
+                        tooltipContent += `Sequence: <strong>${d.sequence}</strong><br/>`;
+                    }
                 }
-            } else if (d.parent_class) {
-                tooltipContent = `<strong>${d.parent_class}.${d.name}()</strong><br/>`;
-                if (d.sequence !== Infinity) {
-                    tooltipContent += `Sequence: <strong>${d.sequence}</strong><br/>`;
+                
+                tooltipContent += `File: ${d.filename}:${d.line}<br/>`;
+                
+                // Add return value if available
+                if (d.params.__return_value__) {
+                    tooltipContent += `<strong>Returns:</strong> `;
+                    tooltipContent += `<span class="param-value">${d.params.__return_value__[0]}</span> `;
+                    tooltipContent += `<span class="param-type">(${d.params.__return_value__[1]})</span><br/>`;
                 }
-            } else {
-                tooltipContent = `<strong>${d.name}()</strong><br/>`;
-                if (d.sequence !== Infinity) {
-                    tooltipContent += `Sequence: <strong>${d.sequence}</strong><br/>`;
+                
+                // Add exception info if available
+                if (d.params.__exception__) {
+                    tooltipContent += `<strong style="color:#d9534f">Exception:</strong> `;
+                    tooltipContent += `<span class="exception-text">${d.params.__exception__[0]}</span><br/>`;
                 }
-            }
-            
-            tooltipContent += `File: ${d.filename}:${d.line}<br/>`;
-            
-            // Add parameters
-            if (d.params) {
+                
+                // Add parameters
                 const standardParams = Object.entries(d.params).filter(
                     ([key]) => !key.startsWith('__')
                 );
@@ -885,186 +1026,197 @@ class FunctionVisualizer:
                 } else {
                     tooltipContent += "No parameters";
                 }
-            }
-            
-            tooltip.html(tooltipContent)
-                .style("left", (event.pageX + 10) + "px")
-                .style("top", (event.pageY - 28) + "px");
-        })
-        .on("mouseout", function() {
-            tooltip.transition().duration(500).style("opacity", 0);
-        });
-        
-        // Function to update simulation
-        simulation.on("tick", () => {
-            link.attr("d", d => {
-                const source = d.source;
-                const target = d.target;
                 
-                if (isSequentialVertical) {
-                    // For vertical layout, use more pronounced curves
-                    const dx = target.x - source.x;
-                    const dy = target.y - source.y;
-                    const dr = Math.sqrt(dx * dx + dy * dy) * 2;
-                    
-                    return `M${source.x},${source.y}
-                           A${dr},${dr} 0 0,1 ${target.x},${target.y}`;
-                } else {
-                    // Default layout with simple curves
-                    return `M${source.x},${source.y}
-                           C${source.x},${(source.y + target.y) / 2}
-                           ${target.x},${(source.y + target.y) / 2}
-                           ${target.x},${target.y}`;
-                }
+                tooltip.html(tooltipContent)
+                    .style("left", (event.pageX + 10) + "px")
+                    .style("top", (event.pageY - 28) + "px");
+            })
+            .on("mouseout", function() {
+                tooltip.transition().duration(500).style("opacity", 0);
             });
             
-            // Update link label positions
-            linkLabels.attr("x", d => (d.source.x + d.target.x) / 2)
-                .attr("y", d => (d.source.y + d.target.y) / 2);
+            // Function to update simulation
+            simulation.on("tick", () => {
+                link.attr("d", d => {
+                    const source = d.source;
+                    const target = d.target;
+                    return `M${source.x},${source.y}
+                            C${source.x},${(source.y + target.y) / 2}
+                            ${target.x},${(source.y + target.y) / 2}
+                            ${target.x},${target.y}`;
+                });
+                
+                // Update link label positions
+                linkLabels.attr("x", d => (d.source.x + d.target.x) / 2)
+                    .attr("y", d => (d.source.y + d.target.y) / 2);
+                
+                node.attr("transform", d => `translate(${d.x},${d.y})`);
+            });
             
-            node.attr("transform", d => `translate(${d.x},${d.y})`);
-        });
-        
-        // Drag functions
-        function dragstarted(event, d) {
-            if (!isVerticalLayout && !isSequentialLayout && !isSequentialVertical && !event.active) 
-                simulation.alphaTarget(0.3).restart();
-            d.fx = d.x;
-            d.fy = d.y;
-        }
-        
-        function dragged(event, d) {
-            if (!isVerticalLayout && !isSequentialLayout && !isSequentialVertical) {
-                // Only allow free dragging in force layout mode
-                d.fx = event.x;
-                d.fy = event.y;
-            } else if (isSequentialVertical) {
-                // In vertical sequential layout, only allow horizontal movement
-                d.fx = event.x;
+            // Drag functions
+            function dragstarted(event, d) {
+                if (!isVerticalLayout && !isSequentialLayout && !isSequentialVertical && !event.active) 
+                    simulation.alphaTarget(0.3).restart();
+                d.fx = d.x;
                 d.fy = d.y;
             }
-        }
-        
-        function dragended(event, d) {
-            if (!isVerticalLayout && !isSequentialLayout && !isSequentialVertical && !event.active) 
-                simulation.alphaTarget(0);
             
-            // In fixed layouts, keep fixed positions
-            if (!isVerticalLayout && !isSequentialLayout && !isSequentialVertical) {
-                d.fx = null;
-                d.fy = null;
-            }
-        }
-        
-        // Function to apply a vertical sequential layout based on execution order
-        function applyVerticalSequentialLayout() {
-            // Sort nodes by sequence number
-            const sortedNodes = [...graphData.nodes].sort((a, b) => {
-                // Handle infinity values - put them at the end
-                if (a.sequence === Infinity && b.sequence === Infinity) return 0;
-                if (a.sequence === Infinity) return 1;
-                if (b.sequence === Infinity) return -1;
-                return a.sequence - b.sequence;
-            });
-            
-            // Position nodes in a strict vertical layout
-            const nodeHeight = 80;  // Vertical space between nodes
-            const topMargin = 50;
-            const leftPosition = width / 2;
-            
-            // Position nodes in a vertical line based on sequence
-            sortedNodes.forEach((node, index) => {
-                // Position nodes in the center column
-                node.x = leftPosition;
-                node.y = topMargin + (index * nodeHeight);
-                
-                // Fix node positions
-                node.fx = node.x;
-                node.fy = node.y;
-            });
-            
-            // Update node positions
-            node.attr("transform", d => `translate(${d.x},${d.y})`);
-            
-            // Update links with simple curved paths
-            link.attr("d", d => {
-                const source = graphData.nodes[d.source.id];
-                const target = graphData.nodes[d.target.id];
-                
-                // Create curved paths - more pronounced curves for links spanning multiple nodes
-                const sourceIndex = sortedNodes.findIndex(n => n.id === source.id);
-                const targetIndex = sortedNodes.findIndex(n => n.id === target.id);
-                const distance = Math.abs(targetIndex - sourceIndex);
-                
-                // Calculate curve intensity based on distance
-                const curveOffset = Math.min(100, distance * 15);
-                
-                if (sourceIndex < targetIndex) {
-                    // Downward link
-                    return `M${source.x},${source.y}
-                            C${source.x + curveOffset},${(source.y + target.y) / 2}
-                            ${target.x + curveOffset},${(source.y + target.y) / 2}
-                            ${target.x},${target.y}`;
+            function dragged(event, d) {
+                if (!isVerticalLayout && !isSequentialLayout && !isSequentialVertical) {
+                    // Only allow free dragging in force layout mode
+                    d.fx = event.x;
+                    d.fy = event.y;
+                } else if (isSequentialLayout) {
+                    // In sequential layout, only allow vertical movement
+                    d.fx = d.x;
+                    d.fy = event.y;
+                } else if (isSequentialVertical) {
+                    // In vertical sequential layout, only allow horizontal movement
+                    d.fx = event.x;
+                    d.fy = d.y;
                 } else {
-                    // Upward link (less common in sequences)
-                    return `M${source.x},${source.y}
-                            C${source.x - curveOffset},${(source.y + target.y) / 2}
-                            ${target.x - curveOffset},${(source.y + target.y) / 2}
-                            ${target.x},${target.y}`;
+                    // In vertical layout, only allow horizontal movement
+                    d.fx = event.x;
+                    d.fy = d.y;
                 }
-            });
+            }
             
-            // Update link label positions
-            linkLabels.attr("x", d => {
-                const source = graphData.nodes[d.source.id];
-                const target = graphData.nodes[d.target.id];
+            function dragended(event, d) {
+                if (!isVerticalLayout && !isSequentialLayout && !isSequentialVertical && !event.active) 
+                    simulation.alphaTarget(0);
                 
-                // Position label to the side of the curve
-                const sourceIndex = sortedNodes.findIndex(n => n.id === source.id);
-                const targetIndex = sortedNodes.findIndex(n => n.id === target.id);
-                const distance = Math.abs(targetIndex - sourceIndex);
-                const curveOffset = Math.min(100, distance * 15);
-                
-                return sourceIndex < targetIndex ? 
-                    (source.x + target.x) / 2 + curveOffset/2 : 
-                    (source.x + target.x) / 2 - curveOffset/2;
-            })
-            .attr("y", d => (d.source.y + d.target.y) / 2)
-            .style("display", "");
+                // In fixed layouts, keep fixed positions
+                if (!isVerticalLayout && !isSequentialLayout && !isSequentialVertical) {
+                    d.fx = null;
+                    d.fy = null;
+                }
+            }
             
-            // Stop the simulation
-            simulation.stop();
-            
-            // Add white background to text for better readability
-            node.selectAll("text").each(function() {
-                const text = d3.select(this);
+            // Initialize with force layout
+            function initForceLayout() {
+                // Add marker end for links
+                link.attr("marker-end", "url(#arrowhead)");
                 
-                // Don't add background to sequence numbers inside nodes
-                if (text.attr("class") === "sequence-number") return;
+                // Clear any fixed positions
+                graphData.nodes.forEach(d => {
+                    d.fx = null;
+                    d.fy = null;
+                });
                 
-                // Remove any existing backgrounds
-                text.selectAll("rect.text-bg").remove();
+                // Run simulation
+                simulation.alpha(1).restart();
                 
-                // Get text dimensions
-                const bbox = text.node().getBBox();
+                isVerticalLayout = false;
+                isSequentialLayout = false;
+                isSequentialVertical = false;
                 
-                // Insert a white background rectangle behind the text
-                text.insert("rect", "text")
-                    .attr("class", "text-bg")
-                    .attr("x", bbox.x - 2)
-                    .attr("y", bbox.y - 2)
-                    .attr("width", bbox.width + 4)
-                    .attr("height", bbox.height + 4);
-            });
-            
-            isVerticalLayout = false;
-            isSequentialLayout = false;
-            isSequentialVertical = true;
-            
-            // Show sequence numbers on links
-            linkLabels.style("display", "");
-        }
-    
+                // Hide link sequence labels in force layout
+                linkLabels.style("display", "none");
+            }
+                 
+            // Function to apply a vertical sequential layout based on execution order
+            function applyVerticalSequentialLayout() {
+                // Sort nodes by sequence number
+                const sortedNodes = [...graphData.nodes].sort((a, b) => {
+                    // Handle infinity values - put them at the end
+                    if (a.sequence === Infinity && b.sequence === Infinity) return 0;
+                    if (a.sequence === Infinity) return 1;
+                    if (b.sequence === Infinity) return -1;
+                    return a.sequence - b.sequence;
+                });
+                
+                // Position nodes in a strict vertical layout
+                const nodeHeight = 80;  // Vertical space between nodes
+                const topMargin = 50;
+                const leftPosition = width / 2;
+                
+                // Position nodes in a vertical line based on sequence
+                sortedNodes.forEach((node, index) => {
+                    // Position nodes in the center column
+                    node.x = leftPosition;
+                    node.y = topMargin + (index * nodeHeight);
+                    
+                    // Fix node positions
+                    node.fx = node.x;
+                    node.fy = node.y;
+                });
+                
+                // Update node positions
+                node.attr("transform", d => `translate(${d.x},${d.y})`);
+                
+                // Update links with simple curved paths
+                link.attr("d", d => {
+                    const source = graphData.nodes[d.source.id];
+                    const target = graphData.nodes[d.target.id];
+                    
+                    // Create curved paths - more pronounced curves for links spanning multiple nodes
+                    const sourceIndex = sortedNodes.findIndex(n => n.id === source.id);
+                    const targetIndex = sortedNodes.findIndex(n => n.id === target.id);
+                    const distance = Math.abs(targetIndex - sourceIndex);
+                    
+                    // Calculate curve intensity based on distance
+                    const curveOffset = Math.min(100, distance * 15);
+                    
+                    if (sourceIndex < targetIndex) {
+                        // Downward link
+                        return `M${source.x},${source.y}
+                                C${source.x + curveOffset},${(source.y + target.y) / 2}
+                                ${target.x + curveOffset},${(source.y + target.y) / 2}
+                                ${target.x},${target.y}`;
+                    } else {
+                        // Upward link (less common in sequences)
+                        return `M${source.x},${source.y}
+                                C${source.x - curveOffset},${(source.y + target.y) / 2}
+                                ${target.x - curveOffset},${(source.y + target.y) / 2}
+                                ${target.x},${target.y}`;
+                    }
+                });
+                
+                // Update link label positions
+                linkLabels.attr("x", d => {
+                    const source = graphData.nodes[d.source.id];
+                    const target = graphData.nodes[d.target.id];
+                    
+                    // Position label to the side of the curve
+                    const sourceIndex = sortedNodes.findIndex(n => n.id === source.id);
+                    const targetIndex = sortedNodes.findIndex(n => n.id === target.id);
+                    const distance = Math.abs(targetIndex - sourceIndex);
+                    const curveOffset = Math.min(100, distance * 15);
+                    
+                    return sourceIndex < targetIndex ? 
+                        (source.x + target.x) / 2 + curveOffset/2 : 
+                        (source.x + target.x) / 2 - curveOffset/2;
+                })
+                .attr("y", d => (d.source.y + d.target.y) / 2)
+                .style("display", "");
+                
+                // Stop the simulation
+                simulation.stop();
+                
+                // Add white background to text for better readability
+                node.selectAll("text").each(function() {
+                    const text = d3.select(this);
+                    
+                    // Remove any existing backgrounds
+                    text.selectAll("rect.text-bg").remove();
+                    
+                    // Get text dimensions
+                    const bbox = text.node().getBBox();
+                    
+                    // Insert a white background rectangle behind the text
+                    text.insert("rect", "text")
+                        .attr("class", "text-bg")
+                        .attr("x", bbox.x - 2)
+                        .attr("y", bbox.y - 2)
+                        .attr("width", bbox.width + 4)
+                        .attr("height", bbox.height + 4);
+                });
+                
+                isVerticalLayout = false;
+                isSequentialLayout = false;
+                isSequentialVertical = true;
+            }
+        
         // Handle node clicks
         function handleNodeClick(event, d) {
             if (d.type === "class_container") {
@@ -1078,7 +1230,7 @@ class FunctionVisualizer:
         
         // Toggle class expansion/collapse
         function toggleClassNode(classNode) {
-           // Toggle collapsed state
+            // Toggle collapsed state
             classNode.collapsed = !classNode.collapsed;
             
             // Update the visual icon
@@ -1177,10 +1329,14 @@ class FunctionVisualizer:
             const fnTitle = document.getElementById("selectedFunction");
             const fileInfo = document.getElementById("fileInfo");
             const sequenceInfo = document.getElementById("sequenceInfo");
+            const returnValueInfo = document.getElementById("returnValueInfo");
+            const exceptionInfo = document.getElementById("exceptionInfo");
             const paramsTable = document.getElementById("paramsTable").getElementsByTagName("tbody")[0];
             
             // Clear previous data
             paramsTable.innerHTML = "";
+            returnValueInfo.innerHTML = "";
+            exceptionInfo.innerHTML = "";
             
             // Update details
             if (d.type === "class_container") {
@@ -1201,29 +1357,60 @@ class FunctionVisualizer:
                 sequenceInfo.textContent = d.sequence !== Infinity ? 
                     `Sequence number: ${d.sequence}` : 'Sequence: Not called directly';
                 
-                // Add parameters (excluding special params starting with __)
-                if (d.params) {
-                    const standardParams = Object.entries(d.params).filter(
-                        ([key]) => !key.startsWith('__')
-                    );
+                // Add return value if available
+                if (d.params.__return_value__) {
+                    returnValueInfo.innerHTML = `
+                        <h4>Return Value:</h4>
+                        <div class="return-value">
+                            <span class="param-value">${d.params.__return_value__[0]}</span>
+                            <span class="param-type">(${d.params.__return_value__[1]})</span>
+                        </div>
+                    `;
+                }
+                
+                // Add exception info if available
+                if (d.params.__exception__) {
+                    let exceptionHtml = `
+                        <h4 class="exception-title">Exception:</h4>
+                        <div class="exception-value">
+                            <span class="exception-text">${d.params.__exception__[0]}</span>
+                        </div>
+                    `;
                     
-                    if (standardParams.length > 0) {
-                        standardParams.forEach(([key, [value, type]]) => {
-                            const row = paramsTable.insertRow();
-                            const nameCell = row.insertCell(0);
-                            const valueCell = row.insertCell(1);
-                            const typeCell = row.insertCell(2);
-                            
-                            nameCell.textContent = key;
-                            valueCell.textContent = value;
-                            typeCell.textContent = type;
-                        });
-                    } else {
-                        const row = paramsTable.insertRow();
-                        const cell = row.insertCell(0);
-                        cell.colSpan = 3;
-                        cell.textContent = "No parameters";
+                    // Add traceback if available
+                    if (d.params.__traceback__) {
+                        exceptionHtml += `
+                            <h5>Traceback:</h5>
+                            <div class="traceback-info">
+                                ${d.params.__traceback__[0]}
+                            </div>
+                        `;
                     }
+                    
+                    exceptionInfo.innerHTML = exceptionHtml;
+                }
+                
+                // Add parameters (excluding special params starting with __)
+                const standardParams = Object.entries(d.params).filter(
+                    ([key]) => !key.startsWith('__')
+                );
+                
+                if (standardParams.length > 0) {
+                    standardParams.forEach(([key, [value, type]]) => {
+                        const row = paramsTable.insertRow();
+                        const nameCell = row.insertCell(0);
+                        const valueCell = row.insertCell(1);
+                        const typeCell = row.insertCell(2);
+                        
+                        nameCell.textContent = key;
+                        valueCell.textContent = value;
+                        typeCell.textContent = type;
+                    });
+                } else {
+                    const row = paramsTable.insertRow();
+                    const cell = row.insertCell(0);
+                    cell.colSpan = 3;
+                    cell.textContent = "No parameters";
                 }
             }
             
@@ -1453,22 +1640,14 @@ class FunctionVisualizer:
                 d.fy = null;
             });
             
-            // Hide all link labels in force layout mode
-            linkLabels.style("display", "none");
-            
-            // Reset simulation and layout flags
-            isVerticalLayout = false;
-            isSequentialLayout = false;
-            isSequentialVertical = false;
-            
             // Expand all classes
             expandAllClasses();
             
             // Hide function details
             document.getElementById("functionDetails").style.display = "none";
             
-            // Restart simulation
-            simulation.alpha(1).restart();
+            // Reset to force layout
+            initForceLayout();
         });
         
         // Layout buttons
@@ -1573,7 +1752,6 @@ class FunctionVisualizer:
         
         print(f"Interactive HTML visualization generated: {output_path}")
         return output_path
-    
 
 # Example decorators and helper functions for easy use
 def trace_and_visualize(func=None, include_stdlib=None):
@@ -1595,7 +1773,7 @@ def trace_and_visualize(func=None, include_stdlib=None):
     def create_wrapper(f):
         @functools.wraps(f)
         def wrapper(*args, **kwargs):
-            tracer = FunctionCallTracer(include_stdlib=include_stdlib)
+            tracer = FunctionCallTracerWithReturn(include_stdlib=include_stdlib)
             tracer.start_tracing()
             try:
                 result = f(*args, **kwargs)
