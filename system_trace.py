@@ -2,7 +2,7 @@ import random
 import datetime
 from typing import Dict, List, Any
 
-from FunctionCallTracer import trace_and_visualize
+from FunctionCallTracer import trace_and_visualize, trace_libraries_with_function
 
 class DataProcessor:
     def __init__(self, data_source: str, config: Dict[str, Any] = None):
@@ -125,7 +125,7 @@ class ConfigManager:
         return result
 
 
-@trace_and_visualize
+@trace_libraries_with_function(include_stdlib=['pandas'])
 def main():
     # Create analysis engine
     engine = AnalysisEngine("MainAnalyzer")

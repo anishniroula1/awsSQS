@@ -2,11 +2,12 @@ import sys
 import os
 from typing import Set
 import json
+import functools
 
 class FunctionCallTracer:
-    def __init__(self, output_dir: str = '.', include_stdlib: bool = False, max_depth: int = None):
+    def __init__(self, output_dir: str = '.', include_stdlib: list = [], max_depth: int = None):
         self.output_dir = output_dir
-        self.include_stdlib = include_stdlib
+        self.include_stdlib = include_stdlib # pass library path as list of string
         self.max_depth = max_depth  # Maximum call depth to trace
         self.call_graph = {}  # Store function calls and their relationships
         self.func_params = {}  # Store function parameters
@@ -1753,10 +1754,10 @@ class FunctionVisualizer:
         return output_path
 
 # Example decorators and helper functions for easy use
-def trace_and_visualize(func):
+def trace_and_visualize(func, include_stdlib=[]):
     """Decorator to trace and visualize a function call."""
     def wrapper(*args, **kwargs):
-        tracer = FunctionCallTracer()
+        tracer = FunctionCallTracer(include_stdlib=include_stdlib)
         tracer.start_tracing()
         try:
             result = func(*args, **kwargs)
@@ -1764,93 +1765,41 @@ def trace_and_visualize(func):
             tracer.stop_tracing()
             tracer.generate_html_visualization()
         return result
-    return wrapper
+    return wrapper 
 
-def run_with_tracing(func, *args, **kwargs):
-    """Run a function with tracing and generate visualizations."""
-    tracer = FunctionCallTracer()
-    tracer.start_tracing()
-    try:
-        result = func(*args, **kwargs)
-    finally:
-        tracer.stop_tracing()
-        tracer.generate_html_visualization()
-    return result
 
-def trace_sequential(func):
-    """Decorator to trace and visualize a function call with sequential ordering."""
-    def wrapper(*args, **kwargs):
-        tracer = FunctionCallTracer()
-        # Reset sequence counter to ensure clean sequence tracking
-        tracer.sequence_counter = 0
-        tracer.start_tracing()
-        try:
-            result = func(*args, **kwargs)
-        finally:
-            tracer.stop_tracing()
-            # Generate both visualizations
-            tracer.generate_html_visualization('sequential_calls.html')
-            print(f"Sequential function call visualization generated. Open 'sequential_calls.html' to view.")
-        return result
-    return wrapper
-
-def analyze_call_sequence(module_or_function, output_dir='.'):
+def trace_libraries_with_function(func=None, include_stdlib=None):
     """
-    Analyze the sequential call patterns of a module or function.
+    A decorator that can trace libraries with or without wrapping a function.
+    
+    Can be used as:
+    @trace_libraries_with_function(include_stdlib=['pandas'])
+    def my_function():
+        pass
     
     Args:
-        module_or_function: A module object or function to trace
-        output_dir: Directory to store output files
-    
-    Returns:
-        Path to the generated HTML visualization
+        func: The function to decorate (optional)
+        include_stdlib: List of library names to trace
     """
-    if callable(module_or_function):
-        # Wrap a single function
-        decorated = trace_sequential(module_or_function)
-        result = decorated()
-        return os.path.join(output_dir, 'sequential_calls.html')
-    else:
-        # Wrap all functions in a module
-        tracer = FunctionCallTracer(output_dir=output_dir)
+    if include_stdlib is None:
+        include_stdlib = []
         
-        # Apply tracing to the entire module's execution
-        tracer.start_tracing()
-        try:
-            # Execute the module code
-            if hasattr(module_or_function, '__file__'):
-                with open(module_or_function.__file__) as f:
-                    code = compile(f.read(), module_or_function.__file__, 'exec')
-                    exec(code, module_or_function.__dict__)
-        finally:
-            tracer.stop_tracing()
-            html_path = tracer.generate_html_visualization('module_sequential_calls.html')
-            print(f"Module sequence analysis complete. Open '{html_path}' to view.")
-            return html_path
-
-from functools import wraps
-from unittest.mock import patch
-
-def test_traced_patch(*patch_args, **patch_kwargs):
-    """Combine @patch and @trace_and_visualize decorators for test methods."""
-    def decorator(func):
-        # Apply the patch decorator first
-        patched_func = patch(*patch_args, **patch_kwargs)(func)
-        
-        # Then apply the tracing decorator
-        @wraps(patched_func)
+    def create_wrapper(f):
+        @functools.wraps(f)
         def wrapper(*args, **kwargs):
-            tracer = FunctionCallTracer()
+            tracer = FunctionCallTracer(include_stdlib=include_stdlib)
             tracer.start_tracing()
             try:
-                result = patched_func(*args, **kwargs)
+                result = f(*args, **kwargs)
+                return result
             finally:
                 tracer.stop_tracing()
-                tracer.generate_html_visualization(f"{func.__name__}_sequential_trace.html")
-            return result
+                tracer.generate_html_visualization()
         return wrapper
-    return decorator
-
-
-
-        
+    
+    # Called as @trace_libraries_with_function
+    if func is not None:
+        return create_wrapper(func)
+    
+    # Called as @trace_libraries_with_function(include_stdlib=['pandas'])
+    return create_wrapper
