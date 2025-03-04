@@ -2,7 +2,7 @@ import random
 import datetime
 from typing import Dict, List, Any
 
-from FunctionCallTracer import trace_and_visualize
+from tracer import trace_and_visualize
 
 
 class DataProcessor:
@@ -126,7 +126,7 @@ class ConfigManager:
         return result
 
 
-@trace_and_visualize
+@trace_and_visualize(show_return=False)
 def main():
     # Create analysis engine
     engine = AnalysisEngine("MainAnalyzer")

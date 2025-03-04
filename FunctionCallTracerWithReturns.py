@@ -1754,12 +1754,12 @@ class FunctionVisualizerWithReturn:
         return output_path
 
 # Example decorators and helper functions for easy use
-def trace_and_visualize(func=None, include_stdlib=None):
+def trace_and_visualize_with_returns(func=None, include_stdlib=None):
     """
     A decorator that can trace libraries with or without wrapping a function.
     
     Can be used as:
-    @trace_and_visualize(include_stdlib=['pandas'])
+    @trace_and_visualize_with_returns(include_stdlib=['pandas'])
     def my_function():
         pass
     
@@ -1783,9 +1783,9 @@ def trace_and_visualize(func=None, include_stdlib=None):
                 tracer.generate_html_visualization()
         return wrapper
     
-    # Called as @trace_and_visualize
+    # Called as @trace_and_visualize_with_returns
     if func is not None:
         return create_wrapper(func)
     
-    # Called as @trace_and_visualize(include_stdlib=['pandas'])
+    # Called as @trace_and_visualize_with_returns(include_stdlib=['pandas'])
     return create_wrapper
