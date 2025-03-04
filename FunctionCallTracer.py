@@ -4,7 +4,7 @@ from typing import Set
 import json
 import functools
 
-class FunctionCallTracer:
+class FunctionCallTracerWithReturn:
     def __init__(self, output_dir: str = '.', include_stdlib: list = [], max_depth: int = None):
         self.output_dir = output_dir
         self.include_stdlib = include_stdlib # pass library path as list of string
@@ -328,10 +328,10 @@ class FunctionCallTracer:
     
     def generate_html_visualization(self, filename: str = 'function_calls.html'):
         """Generate an interactive HTML visualization."""
-        return FunctionVisualizer.generate_html(self, filename)
+        return FunctionVisualizerWithReturn.generate_html(self, filename)
 
 
-class FunctionVisualizer:
+class FunctionVisualizerWithReturn:
     """Creates interactive HTML visualizations from function call data."""
     
     @staticmethod
@@ -1754,26 +1754,12 @@ class FunctionVisualizer:
         return output_path
 
 # Example decorators and helper functions for easy use
-def trace_and_visualize(func):
-    """Decorator to trace and visualize a function call."""
-    def wrapper(*args, **kwargs):
-        tracer = FunctionCallTracer()
-        tracer.start_tracing()
-        try:
-            result = func(*args, **kwargs)
-        finally:
-            tracer.stop_tracing()
-            tracer.generate_html_visualization()
-        return result
-    return wrapper 
-
-
-def trace_libraries_with_function(func=None, include_stdlib=None):
+def trace_and_visualize(func=None, include_stdlib=None):
     """
     A decorator that can trace libraries with or without wrapping a function.
     
     Can be used as:
-    @trace_libraries_with_function(include_stdlib=['pandas'])
+    @trace_and_visualize(include_stdlib=['pandas'])
     def my_function():
         pass
     
@@ -1787,7 +1773,7 @@ def trace_libraries_with_function(func=None, include_stdlib=None):
     def create_wrapper(f):
         @functools.wraps(f)
         def wrapper(*args, **kwargs):
-            tracer = FunctionCallTracer(include_stdlib=include_stdlib)
+            tracer = FunctionCallTracerWithReturn(include_stdlib=include_stdlib)
             tracer.start_tracing()
             try:
                 result = f(*args, **kwargs)
@@ -1797,9 +1783,9 @@ def trace_libraries_with_function(func=None, include_stdlib=None):
                 tracer.generate_html_visualization()
         return wrapper
     
-    # Called as @trace_libraries_with_function
+    # Called as @trace_and_visualize
     if func is not None:
         return create_wrapper(func)
     
-    # Called as @trace_libraries_with_function(include_stdlib=['pandas'])
+    # Called as @trace_and_visualize(include_stdlib=['pandas'])
     return create_wrapper
