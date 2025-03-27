@@ -2,7 +2,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 import json
 
-# Setup DB connection (update with your actual credentials)
+# Setup DB connection
 engine = create_engine("postgresql://user:password@localhost:5432/yourdb")
 Session = sessionmaker(bind=engine)
 session = Session()
@@ -11,7 +11,7 @@ session = Session()
 old_a_number = 1
 new_a_number = 89
 
-# Step 1: Select only rows where matches is an array AND has a_number key
+# Step 1: Only fetch rows where matches contains a_number == old_a_number
 select_query = text("""
     SELECT global_id, matches
     FROM tsp.matches
@@ -19,13 +19,13 @@ select_query = text("""
       AND EXISTS (
         SELECT 1
         FROM jsonb_array_elements(matches) AS elem
-        WHERE elem ? 'a_number'
+        WHERE (elem->>'a_number')::int = :old_a_number
       )
 """)
 
-results = session.execute(select_query).fetchall()
+results = session.execute(select_query, {"old_a_number": old_a_number}).fetchall()
 
-# Step 2: Check and modify a_number in Python
+# Step 2: Modify matches in Python
 records_to_update = []
 
 for global_id, matches in results:
@@ -37,7 +37,7 @@ for global_id, matches in results:
     if updated:
         records_to_update.append((global_id, matches))
 
-# Step 3: Update modified rows in the DB
+# Step 3: Update only the changed rows
 update_query = text("""
     UPDATE tsp.matches
     SET matches = :matches
@@ -51,4 +51,4 @@ for global_id, updated_matches in records_to_update:
     })
 
 session.commit()
-print(f"✅ Updated {len(records_to_update)} rows where a_number = {old_a_number}")
+print(f"✅ Updated {len(records_to_update)} rows with a_number = {old_a_number}")
