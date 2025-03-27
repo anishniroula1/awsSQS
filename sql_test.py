@@ -1,27 +1,27 @@
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy import create_engine
 
-# Connect to your DB
-engine = create_engine("postgresql://user:password@localhost:5432/your_db_name")
+engine = create_engine("postgresql://user:password@localhost:5432/yourdb")
+Session = sessionmaker(bind=engine)
+session = Session()
 
-old_id = 123456
-new_id = 789999
+old_class_id = 1
+new_class_id = 89
 
-update_sql = """
-UPDATE your_table
-SET matches = jsonb_agg(
-    CASE
-        WHEN (elem->>'global_id')::int = :old_id
-        THEN jsonb_set(elem, '{global_id}', to_jsonb(CAST(:new_id AS int)))
-        ELSE elem
-    END
-)
-FROM (
-    SELECT id, jsonb_array_elements(matches) AS elem
-    FROM your_table
-) AS expanded
-WHERE your_table.id = expanded.id
-  AND (elem->>'global_id')::int = :old_id;
-"""
+# Raw SQL to update JSON fields inside class_metadata
+query = text("""
+    UPDATE students
+    SET class_metadata = jsonb_agg(
+        jsonb_set(elem, '{class_id}', to_jsonb(:new_class_id)::jsonb)
+    )
+    FROM (
+        SELECT id, jsonb_array_elements(class_metadata) AS elem
+        FROM students
+    ) sub
+    WHERE students.id = sub.id
+    AND (elem->>'class_id')::int = :old_class_id
+""")
 
-with engine.begin() as conn:
-    result = conn.execute(text(update_sql), {"old_id": old_id, "new_id": new_id})
+session.execute(query, {"old_class_id": old_class_id, "new_class_id": new_class_id})
+session.commit()
