@@ -6,22 +6,29 @@ engine = create_engine("postgresql://user:password@localhost:5432/yourdb")
 Session = sessionmaker(bind=engine)
 session = Session()
 
-old_class_id = 1
-new_class_id = 89
+old_a_number = 1
+new_a_number = 89
 
-# Raw SQL to update JSON fields inside class_metadata
 query = text("""
-    UPDATE students
-    SET class_metadata = jsonb_agg(
-        jsonb_set(elem, '{class_id}', to_jsonb(:new_class_id)::jsonb)
-    )
-    FROM (
-        SELECT id, jsonb_array_elements(class_metadata) AS elem
-        FROM students
-    ) sub
-    WHERE students.id = sub.id
-    AND (elem->>'class_id')::int = :old_class_id
+WITH updated_matches AS (
+    SELECT
+        s.global_id,
+        jsonb_agg(
+            CASE
+                WHEN (elem->>'a_number')::int = :old_a_number
+                THEN jsonb_set(elem, '{a_number}', to_jsonb(:new_a_number)::jsonb)
+                ELSE elem
+            END
+        ) AS new_matches
+    FROM students s,
+         jsonb_array_elements(s.matches) AS elem
+    GROUP BY s.global_id
+)
+UPDATE students
+SET matches = u.new_matches
+FROM updated_matches u
+WHERE students.global_id = u.global_id;
 """)
 
-session.execute(query, {"old_class_id": old_class_id, "new_class_id": new_class_id})
+session.execute(query, {"old_a_number": old_a_number, "new_a_number": new_a_number})
 session.commit()
