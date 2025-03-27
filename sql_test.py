@@ -1,8 +1,7 @@
-from sqlalchemy import text
+from sqlalchemy import text, create_engine
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy import create_engine
 
-engine = create_engine("postgresql://user:password@localhost:5432/yourdb")
+engine = create_engine("postgresql://user:password@localhost:5432/yourdb")  # Update with your real DB URI
 Session = sessionmaker(bind=engine)
 session = Session()
 
@@ -12,7 +11,7 @@ new_a_number = 89
 query = text("""
 WITH updated_matches AS (
     SELECT
-        s.global_id,
+        m.global_id,
         jsonb_agg(
             CASE
                 WHEN (elem->>'a_number')::int = :old_a_number
@@ -20,15 +19,15 @@ WITH updated_matches AS (
                 ELSE elem
             END
         ) AS new_matches
-    FROM students s,
-         LATERAL jsonb_array_elements(s.matches) AS elem
-    WHERE jsonb_typeof(s.matches) = 'array'
-    GROUP BY s.global_id
+    FROM tsp.matches m,
+         LATERAL jsonb_array_elements(m.matches) AS elem
+    WHERE jsonb_typeof(m.matches) = 'array'
+    GROUP BY m.global_id
 )
-UPDATE students
+UPDATE tsp.matches
 SET matches = u.new_matches
 FROM updated_matches u
-WHERE students.global_id = u.global_id;
+WHERE tsp.matches.global_id = u.global_id;
 """)
 
 session.execute(query, {"old_a_number": old_a_number, "new_a_number": new_a_number})
