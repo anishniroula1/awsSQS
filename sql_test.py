@@ -21,7 +21,8 @@ WITH updated_matches AS (
             END
         ) AS new_matches
     FROM students s,
-         jsonb_array_elements(s.matches) AS elem
+         LATERAL jsonb_array_elements(s.matches) AS elem
+    WHERE jsonb_typeof(s.matches) = 'array'
     GROUP BY s.global_id
 )
 UPDATE students
