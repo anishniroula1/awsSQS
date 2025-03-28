@@ -1,52 +1,32 @@
-def update_a_number_in_matches_batch(db: Session, old_a_number: int, new_a_number: int, batch_size: int = 10000) -> int:
+def update_a_number_in_matches_orm(db: Session, old_a_number: int, new_a_number: int, batch_size: int = 1000) -> int:
+    """Update a_number in matches using pure SQLAlchemy ORM"""
     total_updated = 0
-    while True:
-        query = text("""
-            WITH updated AS (
-                UPDATE sentences
-                SET matches = (
-                    SELECT jsonb_agg(
-                        CASE 
-                            WHEN (match->>'a_number')::integer = :old_a_number
-                            THEN jsonb_set(match, '{a_number}', to_jsonb(cast(:new_a_number as text)))
-                            ELSE match
-                        END
-                    )
-                    FROM jsonb_array_elements(matches::jsonb) AS match
-                )
-                WHERE EXISTS (
-                    SELECT 1
-                    FROM jsonb_array_elements(matches::jsonb) AS match
-                    WHERE (match->>'a_number')::integer = :old_a_number
-                )
-                AND global_id IN (
-                    SELECT global_id 
-                    FROM sentences 
-                    WHERE EXISTS (
-                        SELECT 1
-                        FROM jsonb_array_elements(matches::jsonb) AS match
-                        WHERE (match->>'a_number')::integer = :old_a_number
-                    )
-                    LIMIT :batch_size
-                )
-                RETURNING global_id
-            )
-            SELECT COUNT(*) FROM updated
-        """)
+    
+    # Get all sentences that need updating
+    sentences = db.query(models.Sentence).filter(
+        models.Sentence.matches.cast(models.Sentence.matches.type).op('?|')([f'[{{"a_number": {old_a_number}}}]'])
+    ).all()
+    
+    print(f"Found {len(sentences)} records to update")
+    
+    # Process in batches
+    for i in range(0, len(sentences), batch_size):
+        batch = sentences[i:i + batch_size]
         
-        result = db.execute(query, {
-            "old_a_number": old_a_number,
-            "new_a_number": new_a_number,
-            "batch_size": batch_size
-        })
-        
-        batch_count = result.scalar()
-        total_updated += batch_count
-        db.commit()
-        
-        if batch_count == 0:
-            break
+        for sentence in batch:
+            # Update matches in memory
+            updated_matches = []
+            for match in sentence.matches:
+                if match['a_number'] == old_a_number:
+                    match['a_number'] = new_a_number
+                updated_matches.append(match)
             
-        print(f"Updated batch of {batch_count} records. Total updated: {total_updated}")
+            # Update the sentence
+            sentence.matches = updated_matches
+        
+        # Commit the batch
+        db.commit()
+        total_updated += len(batch)
+        print(f"Updated batch of {len(batch)} records. Total updated: {total_updated}")
     
     return total_updated
