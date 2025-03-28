@@ -21,3 +21,12 @@ WHERE EXISTS (
     FROM jsonb_array_elements(matches::jsonb) AS match
     WHERE (match->>'a_number')::integer = 94
 );
+
+SELECT global_id, matches
+            FROM sentences
+            WHERE EXISTS (
+                SELECT 1
+                FROM jsonb_array_elements(matches::jsonb) AS match
+                WHERE (match->>'a_number')::integer = 2030000
+            )
+            LIMIT 300
