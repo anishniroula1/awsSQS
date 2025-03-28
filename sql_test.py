@@ -1,32 +1,37 @@
 def update_a_number_in_matches_orm(db: Session, old_a_number: int, new_a_number: int, batch_size: int = 1000) -> int:
-    """Update a_number in matches using pure SQLAlchemy ORM"""
+    """Update a_number in matches using SQLAlchemy bulk update mapping"""
     total_updated = 0
     
-    # Get all sentences that need updating
-    sentences = db.query(models.Sentence).filter(
-        models.Sentence.matches.cast(models.Sentence.matches.type).op('?|')([f'[{{"a_number": {old_a_number}}}]'])
-    ).all()
-    
-    print(f"Found {len(sentences)} records to update")
-    
-    # Process in batches
-    for i in range(0, len(sentences), batch_size):
-        batch = sentences[i:i + batch_size]
+    while True:
+        # Get batch of sentences that need updating
+        sentences = db.query(models.Sentence).filter(
+            models.Sentence.matches.cast(models.Sentence.matches.type).op('?|')([f'[{{"a_number": {old_a_number}}}]'])
+        ).limit(batch_size).all()
         
-        for sentence in batch:
-            # Update matches in memory
-            updated_matches = []
-            for match in sentence.matches:
-                if match['a_number'] == old_a_number:
-                    match['a_number'] = new_a_number
-                updated_matches.append(match)
+        if not sentences:
+            break
             
-            # Update the sentence
-            sentence.matches = updated_matches
+        # Prepare bulk update data using list comprehension for better performance
+        update_data = [
+            {
+                'global_id': sentence.global_id,
+                'matches': [
+                    {**match, 'a_number': new_a_number} if match['a_number'] == old_a_number else match
+                    for match in sentence.matches
+                ]
+            }
+            for sentence in sentences
+        ]
         
-        # Commit the batch
-        db.commit()
-        total_updated += len(batch)
-        print(f"Updated batch of {len(batch)} records. Total updated: {total_updated}")
+        # Perform bulk update
+        if update_data:
+            db.bulk_update_mappings(
+                models.Sentence,
+                update_data
+            )
+            db.commit()
+            
+            total_updated += len(update_data)
+            print(f"Updated batch of {len(update_data)} records. Total updated: {total_updated}")
     
     return total_updated
