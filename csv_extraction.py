@@ -1,50 +1,57 @@
 import csv
 import re
-import os
-from collections import defaultdict
 
-# Function to extract class_id and class_group
+# Helper function to extract class_id and class_group from text
 def extract_class_info(raw_text):
-    match = re.search(r'/api/class_id_[A-Z\-]+/([\w\-]+)/student', raw_text)
-    if not match:
-        return None, None
-    class_id = match.group(1)
-    
-    # Check if it has a prefix (e.g., DE-123)
-    if '-' in class_id:
-        prefix = class_id.split('-')[0]
-        return class_id, prefix
-    else:
-        return class_id, None
+    patterns = {
+        'class_id': r'/api/class_id/([\w\-]+)',
+        'second_class_id': r'/api/second_class_id/([\w\-]+)',
+        'third_class_id': r'/api/third_class_id/([\w\-]+)',
+    }
 
+    for api_type, pattern in patterns.items():
+        match = re.search(pattern, raw_text)
+        if match:
+            class_id = match.group(1)
+            class_group = class_id.split('-')[0] if '-' in class_id else ''
+            return api_type, class_id, class_group
+
+    return None, None, None  # If no pattern matched
+
+# Input and output files
 input_file = 'input.csv'
-output_all_file = 'all_classes.csv'
-class_group_files = defaultdict(list)
+output_class_id_file = 'class_id.csv'
+output_other_classes_file = 'second_and_third_class_id.csv'
 
+# Lists to collect rows for each file
+class_id_rows = []
+other_class_rows = []
+
+# Read the input CSV and extract relevant info
 with open(input_file, 'r', newline='', encoding='utf-8') as infile:
     reader = csv.DictReader(infile)
-    output_rows = []
-    
+
     for row in reader:
         raw_text = row.get('_raw', '')
-        class_id, class_group = extract_class_info(raw_text)
+        api_type, class_id, class_group = extract_class_info(raw_text)
+        
         if class_id:
-            output_rows.append({'class_id': class_id, 'class_group': class_group if class_group else ''})
-            if class_group:
-                class_group_files[class_group].append({'class_id': class_id})
+            output_row = {'class_id': class_id, 'class_group': class_group}
+            if api_type == 'class_id':
+                class_id_rows.append(output_row)
+            elif api_type in ['second_class_id', 'third_class_id']:
+                other_class_rows.append(output_row)
 
-# Write master output file
-with open(output_all_file, 'w', newline='', encoding='utf-8') as outfile:
+# Write class_id.csv
+with open(output_class_id_file, 'w', newline='', encoding='utf-8') as outfile:
     writer = csv.DictWriter(outfile, fieldnames=['class_id', 'class_group'])
     writer.writeheader()
-    writer.writerows(output_rows)
+    writer.writerows(class_id_rows)
 
-# Write separate files for each class_group
-for group, rows in class_group_files.items():
-    filename = f'class_group_{group}.csv'
-    with open(filename, 'w', newline='', encoding='utf-8') as group_file:
-        writer = csv.DictWriter(group_file, fieldnames=['class_id'])
-        writer.writeheader()
-        writer.writerows(rows)
+# Write second_and_third_class_id.csv
+with open(output_other_classes_file, 'w', newline='', encoding='utf-8') as outfile:
+    writer = csv.DictWriter(outfile, fieldnames=['class_id', 'class_group'])
+    writer.writeheader()
+    writer.writerows(other_class_rows)
 
-print("Extraction completed.")
+print("Extraction and CSV writing complete.")
