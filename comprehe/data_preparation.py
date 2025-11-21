@@ -224,6 +224,19 @@ def _split_dataset(
 
 
 def handler(event, context):
+    """
+    Main Lambda entrypoint. It expects an S3 put event with a .txt and .csv upload.
+    Steps:
+    1) Set fixed folder names and read the sample fraction (how much to hold out).
+    2) Pull the bucket and object keys from the S3 event.
+    3) Load the new text and the new CSV annotations.
+    4) Check the CSV does not point past the end of the text.
+    5) Find any existing prepared version and load it.
+    6) Merge old + new data into a new versioned file name.
+    7) Save the merged dataset back to S3.
+    8) Split into analysis (holdout) and training sets, keeping annotations lined up.
+    9) Save both splits to S3 and return all the keys/counts for downstream steps.
+    """
     try:
         # Folder prefixes and base names stay fixed.
         prepared_prefix = "prepared_data/"
