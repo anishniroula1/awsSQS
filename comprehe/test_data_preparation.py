@@ -89,8 +89,8 @@ def test_prepare_new_dataset_creates_version_and_splits(prep_env):
         bucket,
         annotations_key,
         [
-            {"File": "prepare_training_doc_v1.txt", "Line": "2", "Begin Offset": "0", "End Offset": "4", "Type": "FTO"},
-            {"File": "prepare_training_doc_v1.txt", "Line": "5", "Begin Offset": "0", "End Offset": "4", "Type": "OFAC ORG"},
+            {"File": "prepare_training_doc_v1.txt", "Line": "1", "Begin Offset": "0", "End Offset": "4", "Type": "FTO"},
+            {"File": "prepare_training_doc_v1.txt", "Line": "4", "Begin Offset": "0", "End Offset": "4", "Type": "OFAC ORG"},
         ],
     )
 
@@ -127,10 +127,10 @@ def test_prepare_appends_to_existing_dataset(prep_env):
     _put_csv(
         s3_client,
         bucket,
-        "prepared_data/annotation_v1.csv",
+        "prepared_data/prepare_annotation_v1.csv",
         [
-            {"File": "prepare_training_doc_v1.txt", "Line": "1", "Begin Offset": "0", "End Offset": "4", "Type": "FTO"},
-            {"File": "prepare_training_doc_v1.txt", "Line": "2", "Begin Offset": "0", "End Offset": "4", "Type": "OFAC POI"},
+            {"File": "prepare_training_doc_v1.txt", "Line": "0", "Begin Offset": "0", "End Offset": "4", "Type": "FTO"},
+            {"File": "prepare_training_doc_v1.txt", "Line": "1", "Begin Offset": "0", "End Offset": "4", "Type": "OFAC POI"},
         ],
     )
 
@@ -142,7 +142,7 @@ def test_prepare_appends_to_existing_dataset(prep_env):
         s3_client,
         bucket,
         annotations_key,
-        [{"File": "training_doc_v2.txt", "Line": "1", "Begin Offset": "0", "End Offset": "4", "Type": "OFAC ORG"}],
+        [{"File": "prepare_training_doc_v2.txt", "Line": "0", "Begin Offset": "0", "End Offset": "4", "Type": "OFAC ORG"}],
     )
 
     response = data_preparation.handler(_s3_event(bucket, text_key, annotations_key), {})
