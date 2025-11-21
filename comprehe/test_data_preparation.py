@@ -1,0 +1,180 @@
+import csv
+import importlib
+import io
+import json
+import random
+from pathlib import Path
+from typing import Dict, List, Tuple
+import sys
+
+import boto3
+import pytest
+from moto import mock_aws
+
+# Ensure the project root (containing src/) is importable.
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+
+def _put_text(s3_client, bucket: str, key: str, body: str) -> None:
+    s3_client.put_object(Bucket=bucket, Key=key, Body=body.encode("utf-8"))
+
+
+def _put_csv(s3_client, bucket: str, key: str, rows: List[Dict[str, str]]) -> None:
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=["file", "line", "BeginOffset", "EndOffset", "Type"])
+    writer.writeheader()
+    writer.writerows(rows)
+    s3_client.put_object(Bucket=bucket, Key=key, Body=buf.getvalue().encode("utf-8"))
+
+
+def _get_lines(s3_client, bucket: str, key: str) -> List[str]:
+    obj = s3_client.get_object(Bucket=bucket, Key=key)
+    return obj["Body"].read().decode("utf-8").splitlines()
+
+
+@pytest.fixture
+def prep_env(monkeypatch) -> Tuple[str, boto3.client, object]:
+    """
+    Spin up a moto-backed S3, set required env vars, reload modules so they bind to the mock.
+    """
+    with mock_aws():
+        bucket = "test-bucket"
+        s3_client = boto3.client("s3", region_name="us-east-1")
+        s3_client.create_bucket(Bucket=bucket)
+
+        # Configure env for predictable prefixes and naming.
+        monkeypatch.setenv("PREPARED_PREFIX", "prepared_data/")
+        monkeypatch.setenv("RUN_ANALYSIS_PREFIX", "run_analysis/")
+        monkeypatch.setenv("READY_TO_TRAIN_PREFIX", "ready_to_train/")
+        monkeypatch.setenv("TRAINING_DOCS_PREFIX", "training_docs/")
+        monkeypatch.setenv("DATASET_BASE_NAME", "training_doc")
+        monkeypatch.setenv("SAMPLE_FRACTION", "0.1")
+
+        # Reload modules after mock + env are set so clients pick up the mock.
+        from src.lambdas import common, data_preparation
+
+        importlib.reload(common)
+        importlib.reload(data_preparation)
+
+        # Make sampling deterministic across runs.
+        random.seed(1234)
+
+        yield bucket, s3_client, data_preparation
+
+
+def test_prepare_new_dataset_creates_version_and_splits(prep_env):
+    bucket, s3_client, data_preparation = prep_env
+
+    text_key = "training_docs/new.txt"
+    annotations_key = "training_docs/new.csv"
+    text_body = "\n".join([f"line {i}" for i in range(1, 11)])  # 10 lines
+    _put_text(s3_client, bucket, text_key, text_body)
+    _put_csv(
+        s3_client,
+        bucket,
+        annotations_key,
+        [
+            {"file": "new.txt", "line": "2", "BeginOffset": "0", "EndOffset": "4", "Type": "GGGG1"},
+            {"file": "new.txt", "line": "5", "BeginOffset": "0", "EndOffset": "4", "Type": "GGGG ORG"},
+        ],
+    )
+
+    response = data_preparation.handler(
+        {"bucket": bucket, "text_key": text_key, "annotations_key": annotations_key}, {}
+    )
+
+    # Versioning and counts.
+    assert response["dataset_version"] == 1
+    assert response["run_analysis"]["line_count"] + response["ready_to_train"]["line_count"] == 10
+
+    # Prepared artifacts exist with expected names.
+    prepared_txt = _get_lines(s3_client, bucket, response["prepared"]["text_key"])
+    assert prepared_txt == text_body.splitlines()
+
+    # Splits land in the right prefixes.
+    analysis_lines = _get_lines(s3_client, bucket, response["run_analysis"]["text_key"])
+    train_lines = _get_lines(s3_client, bucket, response["ready_to_train"]["text_key"])
+    assert len(analysis_lines) == response["run_analysis"]["line_count"]
+    assert len(train_lines) == response["ready_to_train"]["line_count"]
+    assert len(analysis_lines) + len(train_lines) == len(prepared_txt)
+
+
+def test_prepare_appends_to_existing_dataset(prep_env):
+    bucket, s3_client, data_preparation = prep_env
+
+    # Seed existing prepared v1.
+    _put_text(s3_client, bucket, "prepared_data/training_doc_v1.txt", "old1\nold2")
+    _put_csv(
+        s3_client,
+        bucket,
+        "prepared_data/training_doc_v1.csv",
+        [
+            {"file": "training_doc_v1.txt", "line": "1", "BeginOffset": "0", "EndOffset": "4", "Type": "GGGG1"},
+            {"file": "training_doc_v1.txt", "line": "2", "BeginOffset": "0", "EndOffset": "4", "Type": "GGGG POI"},
+        ],
+    )
+
+    # New upload to append.
+    text_key = "training_docs/newer.txt"
+    annotations_key = "training_docs/newer.csv"
+    _put_text(s3_client, bucket, text_key, "new1\nnew2")
+    _put_csv(
+        s3_client,
+        bucket,
+        annotations_key,
+        [{"file": "newer.txt", "line": "1", "BeginOffset": "0", "EndOffset": "4", "Type": "GGGG ORG"}],
+    )
+
+    response = data_preparation.handler(
+        {"bucket": bucket, "text_key": text_key, "annotations_key": annotations_key}, {}
+    )
+
+    assert response["dataset_version"] == 2
+
+    prepared_txt = _get_lines(s3_client, bucket, response["prepared"]["text_key"])
+    # Expect old lines then new lines.
+    assert prepared_txt == ["old1", "old2", "new1", "new2"]
+
+    # Ensure split sizes add up and at least one line was held out.
+    assert response["run_analysis"]["line_count"] >= 1
+    assert response["ready_to_train"]["line_count"] >= 1
+    assert response["run_analysis"]["line_count"] + response["ready_to_train"]["line_count"] == 4
+
+    # Annotations were rewritten to the new combined name.
+    analysis_csv = _get_lines(s3_client, bucket, response["run_analysis"]["annotations_key"])
+    assert analysis_csv[0] == "file,line,BeginOffset,EndOffset,Type"
+    assert all("training_doc_v2.txt" in row for row in analysis_csv[1:])
+
+
+def test_resample_only_creates_new_version(prep_env):
+    bucket, s3_client, data_preparation = prep_env
+
+    # Seed prepared v1 to resample from.
+    _put_text(s3_client, bucket, "prepared_data/training_doc_v1.txt", "old1\nold2\nold3")
+    _put_csv(
+        s3_client,
+        bucket,
+        "prepared_data/training_doc_v1.csv",
+        [{"file": "training_doc_v1.txt", "line": "1", "BeginOffset": "0", "EndOffset": "4", "Type": "GGGG1"}],
+    )
+
+    response = data_preparation.handler({"bucket": bucket, "resample_only": True}, {})
+
+    assert response["dataset_version"] == 2
+    # No new data added; total lines remain 3.
+    assert response["total_lines"] == 3
+    assert response["run_analysis"]["line_count"] + response["ready_to_train"]["line_count"] == 3
+
+    # Prepared outputs were rewritten to v2.
+    assert response["prepared"]["text_key"].endswith("training_doc_v2.txt")
+    prepared_lines = _get_lines(s3_client, bucket, response["prepared"]["text_key"])
+    assert prepared_lines == ["old1", "old2", "old3"]
+
+
+def test_resample_only_without_data_fails(prep_env):
+    bucket, s3_client, data_preparation = prep_env
+    # No prepared_data present should raise.
+    with pytest.raises(data_preparation.DataPreparationError):
+        data_preparation.handler({"bucket": bucket, "resample_only": True}, {})
