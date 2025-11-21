@@ -21,29 +21,11 @@ class DataPreparationError(Exception):
 
 
 def _extract_event_keys(event: Dict) -> Tuple[str, str, str]:
-    """Get bucket and object keys out of the event."""
-    # If the caller handed us the bucket and keys directly, use them.
-    if "bucket" in event and "text_key" in event and "annotations_key" in event:
-        return event["bucket"], event["text_key"], event["annotations_key"]
-
-    # This path covers EventBridge style events.
-    if event.get("detail"):
-        detail = event["detail"]
-        if "bucket" in detail and "object" in detail:
-            bucket = detail["bucket"]["name"]
-            text_key = detail["object"]["key"]
-            raise ValueError(
-                "Step input must include both text_key and annotations_key; "
-                f"only saw {text_key}"
-            )
-
-    # This path covers S3 put events with both files.
+    """Pull bucket and object keys from an S3 trigger (needs both txt and csv)."""
     if "Records" in event:
         records = event["Records"]
         if len(records) < 2:
-            raise ValueError(
-                "S3 trigger must include both text and CSV objects; received fewer than 2 records"
-            )
+            raise ValueError("S3 trigger needs both the text file and the csv file")
         bucket = records[0]["s3"]["bucket"]["name"]
         keys = [r["s3"]["object"]["key"] for r in records]
         text_key = next((k for k in keys if k.lower().endswith(".txt")), None)
@@ -52,7 +34,7 @@ def _extract_event_keys(event: Dict) -> Tuple[str, str, str]:
             raise ValueError("S3 trigger missing txt or csv payload")
         return bucket, text_key, csv_key
 
-    raise ValueError("Unsupported event shape; need bucket/text_key/annotations_key")
+    raise ValueError("Unsupported event; expected S3 put with txt and csv")
 
 
 def _load_annotations(bucket: str, key: str) -> List[Dict]:

@@ -37,6 +37,15 @@ def _get_lines(s3_client, bucket: str, key: str) -> List[str]:
     return obj["Body"].read().decode("utf-8").splitlines()
 
 
+def _s3_event(bucket: str, text_key: str, csv_key: str) -> Dict:
+    return {
+        "Records": [
+            {"s3": {"bucket": {"name": bucket}, "object": {"key": text_key}}},
+            {"s3": {"bucket": {"name": bucket}, "object": {"key": csv_key}}},
+        ]
+    }
+
+
 @pytest.fixture
 def prep_env(monkeypatch) -> Tuple[str, boto3.client, object]:
     """
@@ -82,9 +91,7 @@ def test_prepare_new_dataset_creates_version_and_splits(prep_env):
         ],
     )
 
-    response = data_preparation.handler(
-        {"bucket": bucket, "text_key": text_key, "annotations_key": annotations_key}, {}
-    )
+    response = data_preparation.handler(_s3_event(bucket, text_key, annotations_key), {})
 
     # Versioning and counts.
     assert response["dataset_version"] == 1
@@ -128,9 +135,7 @@ def test_prepare_appends_to_existing_dataset(prep_env):
         [{"file": "newer.txt", "line": "1", "BeginOffset": "0", "EndOffset": "4", "Type": "OFAC ORG"}],
     )
 
-    response = data_preparation.handler(
-        {"bucket": bucket, "text_key": text_key, "annotations_key": annotations_key}, {}
-    )
+    response = data_preparation.handler(_s3_event(bucket, text_key, annotations_key), {})
 
     assert response["dataset_version"] == 2
 
@@ -147,3 +152,14 @@ def test_prepare_appends_to_existing_dataset(prep_env):
     analysis_csv = _get_lines(s3_client, bucket, response["run_analysis"]["annotations_key"])
     assert analysis_csv[0] == "file,line,BeginOffset,EndOffset,Type"
     assert all("training_doc_v2.txt" in row for row in analysis_csv[1:])
+
+
+def test_s3_event_missing_csv_raises(prep_env):
+    bucket, s3_client, data_preparation = prep_env
+    bad_event = {
+        "Records": [
+            {"s3": {"bucket": {"name": bucket}, "object": {"key": "training_docs/only.txt"}}},
+        ]
+    }
+    with pytest.raises(data_preparation.DataPreparationError):
+        data_preparation.handler(bad_event, {})
