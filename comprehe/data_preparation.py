@@ -17,18 +17,16 @@ REQUIRED_COLUMNS = ["file", "line", "BeginOffset", "EndOffset", "Type"]
 
 
 class DataPreparationError(Exception):
-    """Raised when data prep cannot continue due to invalid inputs or IO failures."""
+    """Means data prep failed because something was wrong or S3 broke."""
 
 
 def _extract_event_keys(event: Dict) -> Tuple[str, str, str]:
-    """
-    Accept either direct Step Functions payload or raw S3 event.
-    """
-    # Direct invocation with explicit bucket/keys.
+    """Get bucket and object keys out of the event."""
+    # If the caller handed us the bucket and keys directly, use them.
     if "bucket" in event and "text_key" in event and "annotations_key" in event:
         return event["bucket"], event["text_key"], event["annotations_key"]
 
-    # EventBridge detail style payload.
+    # This path covers EventBridge style events.
     if event.get("detail"):
         detail = event["detail"]
         if "bucket" in detail and "object" in detail:
@@ -39,7 +37,7 @@ def _extract_event_keys(event: Dict) -> Tuple[str, str, str]:
                 f"only saw {text_key}"
             )
 
-    # S3 Put trigger with two records (txt + csv).
+    # This path covers S3 put events with both files.
     if "Records" in event:
         records = event["Records"]
         if len(records) < 2:
@@ -58,21 +56,20 @@ def _extract_event_keys(event: Dict) -> Tuple[str, str, str]:
 
 
 def _load_annotations(bucket: str, key: str) -> List[Dict]:
-    # Pull CSV text from S3.
+    # Grab the CSV file from S3.
     raw = load_s3_text(bucket, key)
     try:
-        # Parse rows while preserving header order.
         reader = csv.DictReader(io.StringIO(raw))
-    except csv.Error as exc:
-        raise DataPreparationError(f"Failed to parse annotations CSV {bucket}/{key}: {exc}") from exc
+    except csv.Error as e:
+        raise DataPreparationError(f"Failed to read annotations CSV {bucket}/{key}: {e}") from e
 
-    # Ensure the file has every column we expect.
+    # Make sure the header has all the columns we need.
     missing = [c for c in REQUIRED_COLUMNS if c not in reader.fieldnames]
     if missing:
         raise DataPreparationError(f"CSV missing required columns: {missing}")
     rows: List[Dict] = []
     for row in reader:
-        # Normalize numeric fields to ints so math works later.
+        # Turn strings into ints so math works later.
         rows.append(
             {
                 "file": row["file"],
@@ -86,15 +83,12 @@ def _load_annotations(bucket: str, key: str) -> List[Dict]:
 
 
 def _find_latest_version(bucket: str, prefix: str, base_name: str) -> Tuple[int, str, str]:
-    """
-    Look for the highest numbered version in prepared_data.
-    Returns tuple (version, txt_key, csv_key). Version 0 indicates none found.
-    """
-    # List every object under the prepared prefix.
+    """Find the newest prepared version already in S3."""
+    # List every object under the prepared folder.
     try:
         keys = list_keys(bucket, prefix)
-    except (ClientError, BotoCoreError) as exc:
-        raise DataPreparationError(f"S3 error listing {bucket}/{prefix}: {exc}") from exc
+    except (ClientError, BotoCoreError) as e:
+        raise DataPreparationError(f"S3 error listing {bucket}/{prefix}: {e}") from e
     latest_version = 0
     latest_txt = ""
     latest_csv = ""
@@ -117,27 +111,25 @@ def _find_latest_version(bucket: str, prefix: str, base_name: str) -> Tuple[int,
 
 
 def _write_csv(bucket: str, key: str, rows: List[Dict[str, str]]) -> None:
-    # Convert list of dicts back into CSV text and upload.
+    # Turn rows into CSV text and upload.
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=REQUIRED_COLUMNS)
     writer.writeheader()
     writer.writerows(rows)
     try:
         put_s3_text(bucket, key, output.getvalue(), content_type="text/csv")
-    except (ClientError, BotoCoreError) as exc:
-        raise DataPreparationError(f"Failed to write CSV to {bucket}/{key}: {exc}") from exc
+    except (ClientError, BotoCoreError) as e:
+        raise DataPreparationError(f"Failed to write CSV to {bucket}/{key}: {e}") from e
 
 
 def _safe_load_text(bucket: str, key: str, label: str) -> List[str]:
-    """
-    Load and split a text object from S3, raising a friendly error if it fails.
-    """
+    """Load a text file from S3 and split by line, with nicer errors."""
     try:
         return load_s3_text(bucket, key).splitlines()
-    except (ClientError, BotoCoreError) as exc:
-        raise DataPreparationError(f"S3 error loading {label} at {bucket}/{key}: {exc}") from exc
-    except Exception as exc:
-        raise DataPreparationError(f"Unable to load {label} at {bucket}/{key}: {exc}") from exc
+    except (ClientError, BotoCoreError) as e:
+        raise DataPreparationError(f"S3 error loading {label} at {bucket}/{key}: {e}") from e
+    except Exception as e:
+        raise DataPreparationError(f"Unable to load {label} at {bucket}/{key}: {e}") from e
 
 
 def _merge_datasets(
@@ -148,9 +140,7 @@ def _merge_datasets(
     dataset_base_name: str,
     next_version: int,
 ) -> Tuple[List[str], List[Dict], str, str]:
-    """
-    Append new text + annotations onto the existing prepared set and stamp with a new versioned name.
-    """
+    """Stick the new files on the end of the old ones and bump the version name."""
     combined_name = f"{dataset_base_name}_v{next_version}.txt"
     combined_annotation_name = f"{dataset_base_name}_v{next_version}.csv"
 
@@ -192,32 +182,32 @@ def _split_dataset(
     sample_fraction: float,
     combined_name: str,
 ) -> Tuple[List[str], List[Dict], List[str], List[Dict], int, int]:
-    """
-    Split merged data into analysis (10%) and training (90%) while keeping annotation line numbers aligned.
-    """
+    """Split the big file into analysis and training parts while keeping lines lined up."""
     total_lines = len(combined_lines)
     sample_count = int(total_lines * sample_fraction)
-    # Clamp sample_count so analysis always has at least 1 line but never the full corpus.
+    # Make sure analysis gets at least one line but not the whole file.
     if sample_count < 1 and total_lines > 1:
         sample_count = 1
     if sample_count >= total_lines:
         sample_count = max(1, total_lines - 1)
 
-    # Select evaluation subset by random line index.
-    sampled_indices = {set(random.sample(range(1, total_lines + 1), sample_count))}
+    # Pick which lines belong to the analysis set.
+    sampled_indices = set(random.sample(range(1, total_lines + 1), sample_count))
     logger.info("Sampling %s of %s lines for analysis", sample_count, total_lines)
 
-    # Group annotations by original line for quick reindex later.
+    # Group annotations by the line they came from.
     annotations_by_line: Dict[int, List[Dict]] = {}
     for row in combined_annotations:
         annotations_by_line.setdefault(int(row["line"]), []).append(row)
 
-    # Buffers to keep analysis (e.g., 10%) and training (e.g., 90%) splits.
+    # Buckets for the analysis set and the training set.
     analysis_lines: List[str] = []
     train_lines: List[str] = []
     analysis_annotations: List[Dict] = []
     train_annotations: List[Dict] = []
 
+    # Go through every line and send it to the analysis group or the training group.
+    # Give each group its own line numbers and move any matching annotations to that new line.
     for idx, text in enumerate(combined_lines, start=1):
         if idx in sampled_indices:
             # Map old line index to new analysis line number.
@@ -253,57 +243,39 @@ def _split_dataset(
 
 def handler(event, context):
     try:
-        # Flag to reuse latest dataset and only reshuffle holdout.
-        resample_only = event.get("resample_only", False)
-        # Prefixes for each stage of the pipeline.
-        prepared_prefix = get_env("PREPARED_PREFIX", "prepared_data/")
-        training_docs_prefix = get_env("TRAINING_DOCS_PREFIX", "training_docs/")
-        run_analysis_prefix = get_env("RUN_ANALYSIS_PREFIX", "run_analysis/")
-        ready_to_train_prefix = get_env("READY_TO_TRAIN_PREFIX", "ready_to_train/")
-        # Base name of output files.
-        dataset_base_name = get_env("DATASET_BASE_NAME", "training_doc")
+        # Folder prefixes and base names stay fixed.
+        prepared_prefix = "prepared_data/"
+        run_analysis_prefix = "run_analysis/"
+        ready_to_train_prefix = "ready_to_train/"
+        dataset_base_name = "training_doc"
+
         # Portion of data to hold out for evaluation.
         try:
             sample_fraction = float(get_env("SAMPLE_FRACTION", "0.1"))
-        except ValueError as exc:
-            raise DataPreparationError("SAMPLE_FRACTION must be a float") from exc
+        except ValueError as e:
+            raise DataPreparationError("SAMPLE_FRACTION must be a float") from e
 
-        if resample_only:
-            # Reuse existing prepared dataset; no new lines to merge.
-            if "bucket" not in event:
-                raise DataPreparationError("bucket is required when resample_only is true")
-            bucket = event["bucket"]
-            new_lines: List[str] = []
-            annotations: List[Dict] = []
-            text_key = ""
-            annotations_key = ""
-        else:
-            # Fresh upload path: pull txt + csv passed via trigger.
-            bucket, text_key, annotations_key = _extract_event_keys(event)
-            logger.info(
-                "Preparing data from %s/%s and %s/%s", bucket, text_key, bucket, annotations_key
+        # Fresh upload path: pull txt + csv passed via trigger.
+        bucket, text_key, annotations_key = _extract_event_keys(event)
+        logger.info("Preparing data from %s/%s and %s/%s", bucket, text_key, bucket, annotations_key)
+        # Read and split the raw text by line to keep alignment with CSV lines.
+        new_lines = _safe_load_text(bucket, text_key, "incoming text")
+        # Parse CSV annotations.
+        annotations = _load_annotations(bucket, annotations_key)
+
+        # Make sure the CSV isn’t pointing at a text line that doesn’t exist.
+        max_line = max((row["line"] for row in annotations), default=0)
+        if max_line > len(new_lines):
+            raise DataPreparationError(
+                f"Annotations reference line {max_line} but text has only {len(new_lines)} lines"
             )
-            # Read and split the raw text by line to keep alignment with CSV lines.
-            new_lines = _safe_load_text(bucket, text_key, "incoming text")
-            # Parse CSV annotations.
-            annotations = _load_annotations(bucket, annotations_key)
-
-            # Guard that annotations never reference a missing text line.
-            max_line = max((row["line"] for row in annotations), default=0)
-            if max_line > len(new_lines):
-                raise DataPreparationError(
-                    f"Annotations reference line {max_line} but text has only {len(new_lines)} lines"
-                )
 
         # Load previous prepared data (if any)
         latest_version, latest_txt_key, latest_csv_key = _find_latest_version(
             bucket, prepared_prefix, dataset_base_name
         )
 
-        if resample_only and not latest_txt_key:
-            raise DataPreparationError("Cannot resample because no prepared dataset exists yet.")
-
-        # Start with empty buffers for historical content.
+        # Start with empty history until we find one.
         existing_lines: List[str] = []
         existing_annotations: List[Dict] = []
         if latest_version > 0:
@@ -312,7 +284,7 @@ def handler(event, context):
             existing_lines = _safe_load_text(bucket, latest_txt_key, "prepared text")
             existing_annotations = _load_annotations(bucket, latest_csv_key)
 
-        # Combine datasets (existing + new). When resampling only, new_lines will be empty.
+        # Combine old stuff with the new upload.
         next_version = latest_version + 1
         (
             combined_lines,
@@ -337,8 +309,8 @@ def handler(event, context):
         try:
             put_s3_text(bucket, prepared_txt_key, "\n".join(combined_lines))
             _write_csv(bucket, prepared_csv_key, combined_annotations)
-        except (ClientError, BotoCoreError) as exc:
-            raise DataPreparationError(f"S3 error writing prepared artifacts: {exc}") from exc
+        except (ClientError, BotoCoreError) as e:
+            raise DataPreparationError(f"S3 error writing prepared artifacts: {e}") from e
 
         # Build run-analysis and ready-to-train splits.
         (
@@ -361,10 +333,10 @@ def handler(event, context):
             _write_csv(bucket, analysis_csv_key, analysis_annotations)
             put_s3_text(bucket, ready_txt_key, "\n".join(train_lines))
             _write_csv(bucket, ready_csv_key, train_annotations)
-        except (ClientError, BotoCoreError) as exc:
-            raise DataPreparationError(f"S3 error writing split artifacts: {exc}") from exc
+        except (ClientError, BotoCoreError) as e:
+            raise DataPreparationError(f"S3 error writing split artifacts: {e}") from e
 
-        # Return shape consumed by downstream Lambdas/Step Functions.
+        # Send back everything the next steps need.
         response = {
             "bucket": bucket,
             "dataset_version": next_version,
@@ -386,10 +358,10 @@ def handler(event, context):
         logger.info("Prepared dataset response: %s", json.dumps(response))
         return response
     except DataPreparationError:
-        # Let explicit prep errors bubble up after logging.
+        # We already know what went wrong, just log and rethrow.
         logger.exception("Data preparation failed due to input/validation error")
         raise
-    except Exception as exc:
-        # Catch-all for unexpected failures to avoid silent crashes.
+    except Exception as e:
+        # Last-resort catch so the Step Function sees the failure.
         logger.exception("Data preparation failed unexpectedly")
-        raise DataPreparationError(f"Unexpected failure: {exc}") from exc
+        raise DataPreparationError(f"Unexpected failure: {e}") from e
