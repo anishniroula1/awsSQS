@@ -13,7 +13,7 @@ from .common import get_env, list_keys, load_s3_text, put_s3_text, s3
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-REQUIRED_COLUMNS = ["file", "line", "BeginOffset", "EndOffset", "Type"]
+REQUIRED_COLUMNS = ["File", "Line", "Begin Offset", "End Offset", "Type"]
 
 
 class DataPreparationError(Exception):
@@ -54,42 +54,44 @@ def _load_annotations(bucket: str, key: str) -> List[Dict]:
         # Turn strings into ints so math works later.
         rows.append(
             {
-                "file": row["file"],
-                "line": int(row["line"]),
-                "BeginOffset": int(row["BeginOffset"]),
-                "EndOffset": int(row["EndOffset"]),
+                "file": row["File"],
+                "line": int(row["Line"]),
+                "BeginOffset": int(row["Begin Offset"]),
+                "EndOffset": int(row["End Offset"]),
                 "Type": row["Type"],
             }
         )
     return rows
 
 
-def _find_latest_version(bucket: str, prefix: str, base_name: str) -> Tuple[int, str, str]:
+def _find_latest_version(
+    bucket: str, prefix: str, text_base: str, annotation_base: str
+) -> Tuple[int, str, str]:
     """Find the newest prepared version already in S3."""
     # List every object under the prepared folder.
     try:
         keys = list_keys(bucket, prefix)
     except (ClientError, BotoCoreError) as e:
         raise DataPreparationError(f"S3 error listing {bucket}/{prefix}: {e}") from e
-    latest_version = 0
-    latest_txt = ""
-    latest_csv = ""
-    # Match files like prepared_data/training_doc_v4.txt or .csv
-    pattern = re.compile(rf"{re.escape(prefix)}{re.escape(base_name)}_v(\d+)\.(txt|csv)$")
+
+    text_pattern = re.compile(rf"{re.escape(prefix)}{re.escape(text_base)}_v(\d+)\.txt$")
+    ann_pattern = re.compile(rf"{re.escape(prefix)}{re.escape(annotation_base)}_v(\d+)\.csv$")
+    text_versions: Dict[int, str] = {}
+    ann_versions: Dict[int, str] = {}
 
     for key in keys:
-        match = pattern.match(key)
-        if not match:
-            continue
-        version = int(match.group(1))
-        ext = match.group(2)
-        if version >= latest_version:
-            if ext == "txt":
-                latest_txt = key
-            elif ext == "csv":
-                latest_csv = key
-            latest_version = version
-    return latest_version, latest_txt, latest_csv
+        tm = text_pattern.match(key)
+        if tm:
+            text_versions[int(tm.group(1))] = key
+        am = ann_pattern.match(key)
+        if am:
+            ann_versions[int(am.group(1))] = key
+
+    common_versions = set(text_versions) & set(ann_versions)
+    if not common_versions:
+        return 0, "", ""
+    latest_version = max(common_versions)
+    return latest_version, text_versions[latest_version], ann_versions[latest_version]
 
 
 def _write_csv(bucket: str, key: str, rows: List[Dict[str, str]]) -> None:
@@ -97,7 +99,16 @@ def _write_csv(bucket: str, key: str, rows: List[Dict[str, str]]) -> None:
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=REQUIRED_COLUMNS)
     writer.writeheader()
-    writer.writerows(rows)
+    for row in rows:
+        writer.writerow(
+            {
+                "File": row["file"],
+                "Line": row["line"],
+                "Begin Offset": row["BeginOffset"],
+                "End Offset": row["EndOffset"],
+                "Type": row["Type"],
+            }
+        )
     try:
         put_s3_text(bucket, key, output.getvalue(), content_type="text/csv")
     except (ClientError, BotoCoreError) as e:
@@ -119,12 +130,12 @@ def _merge_datasets(
     existing_annotations: List[Dict],
     new_lines: List[str],
     new_annotations: List[Dict],
-    dataset_base_name: str,
-    next_version: int,
+    prepared_text_name: str,
+    prepared_annotation_name: str,
 ) -> Tuple[List[str], List[Dict], str, str]:
     """Stick the new files on the end of the old ones and bump the version name."""
-    combined_name = f"{dataset_base_name}_v{next_version}.txt"
-    combined_annotation_name = f"annotation_v{next_version}.csv"
+    combined_name = prepared_text_name
+    combined_annotation_name = prepared_annotation_name
 
     # Merge the line buffers.
     combined_lines = [*existing_lines, *new_lines]
@@ -162,7 +173,8 @@ def _split_dataset(
     combined_lines: List[str],
     combined_annotations: List[Dict],
     sample_fraction: float,
-    combined_name: str,
+    analysis_text_name: str,
+    ready_text_name: str,
 ) -> Tuple[List[str], List[Dict], List[str], List[Dict], int, int]:
     """Split the big file into analysis and training parts while keeping lines lined up."""
     total_lines = len(combined_lines)
@@ -198,7 +210,7 @@ def _split_dataset(
             for row in annotations_by_line.get(idx, []):
                 analysis_annotations.append(
                     {
-                        "file": combined_name,
+                        "file": analysis_text_name,
                         "line": new_line_no,
                         "BeginOffset": row["BeginOffset"],
                         "EndOffset": row["EndOffset"],
@@ -212,7 +224,7 @@ def _split_dataset(
             for row in annotations_by_line.get(idx, []):
                 train_annotations.append(
                     {
-                        "file": combined_name,
+                        "file": ready_text_name,
                         "line": new_line_no,
                         "BeginOffset": row["BeginOffset"],
                         "EndOffset": row["EndOffset"],
@@ -242,7 +254,12 @@ def handler(event, context):
         prepared_prefix = "prepared_data/"
         run_analysis_prefix = "run_analysis/"
         ready_to_train_prefix = "ready_to_train/"
-        dataset_base_name = "training_doc"
+        dataset_base_name = "prepare_training_doc"
+        prepared_annotation_base = "prepare_annotation"
+        analysis_text_base = "analysis_training_doc"
+        analysis_annotation_base = "analysis_annotation"
+        ready_text_base = "train_training_doc"
+        ready_annotation_base = "train_annotation"
 
         # Portion of data to hold out for evaluation.
         try:
@@ -267,7 +284,7 @@ def handler(event, context):
 
         # Load previous prepared data (if any)
         latest_version, latest_txt_key, latest_csv_key = _find_latest_version(
-            bucket, prepared_prefix, dataset_base_name
+            bucket, prepared_prefix, dataset_base_name, prepared_annotation_base
         )
 
         # Start with empty history until we find one.
@@ -281,6 +298,8 @@ def handler(event, context):
 
         # Combine old stuff with the new upload.
         next_version = latest_version + 1
+        prepared_text_name = f"{dataset_base_name}_v{next_version}.txt"
+        prepared_annotation_name = f"{prepared_annotation_base}_v{next_version}.csv"
         (
             combined_lines,
             combined_annotations,
@@ -291,8 +310,8 @@ def handler(event, context):
             existing_annotations,
             new_lines,
             annotations,
-            dataset_base_name,
-            next_version,
+            prepared_text_name,
+            prepared_annotation_name,
         )
 
         if not combined_lines:
@@ -308,7 +327,10 @@ def handler(event, context):
             raise DataPreparationError(f"S3 error writing prepared artifacts: {e}") from e
 
         # Build run-analysis and ready-to-train splits.
-        annotation_name = f"annotation_v{next_version}.csv"
+        analysis_text_name = f"{analysis_text_base}_v{next_version}.txt"
+        analysis_annotation_name = f"{analysis_annotation_base}_v{next_version}.csv"
+        ready_text_name = f"{ready_text_base}_v{next_version}.txt"
+        ready_annotation_name = f"{ready_annotation_base}_v{next_version}.csv"
         (
             analysis_lines,
             analysis_annotations,
@@ -316,12 +338,18 @@ def handler(event, context):
             train_annotations,
             sample_count,
             total_lines,
-        ) = _split_dataset(combined_lines, combined_annotations, sample_fraction, combined_name)
+        ) = _split_dataset(
+            combined_lines,
+            combined_annotations,
+            sample_fraction,
+            analysis_text_name,
+            ready_text_name,
+        )
 
-        analysis_txt_key = f"{run_analysis_prefix}{combined_name}"
-        analysis_csv_key = f"{run_analysis_prefix}{annotation_name}"
-        ready_txt_key = f"{ready_to_train_prefix}{combined_name}"
-        ready_csv_key = f"{ready_to_train_prefix}{annotation_name}"
+        analysis_txt_key = f"{run_analysis_prefix}{analysis_text_name}"
+        analysis_csv_key = f"{run_analysis_prefix}{analysis_annotation_name}"
+        ready_txt_key = f"{ready_to_train_prefix}{ready_text_name}"
+        ready_csv_key = f"{ready_to_train_prefix}{ready_annotation_name}"
 
         # Persist new splits for downstream steps.
         try:

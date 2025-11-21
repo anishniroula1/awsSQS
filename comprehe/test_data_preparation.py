@@ -26,7 +26,9 @@ def _put_text(s3_client, bucket: str, key: str, body: str) -> None:
 
 def _put_csv(s3_client, bucket: str, key: str, rows: List[Dict[str, str]]) -> None:
     buf = io.StringIO()
-    writer = csv.DictWriter(buf, fieldnames=["file", "line", "BeginOffset", "EndOffset", "Type"])
+    writer = csv.DictWriter(
+        buf, fieldnames=["File", "Line", "Begin Offset", "End Offset", "Type"]
+    )
     writer.writeheader()
     writer.writerows(rows)
     s3_client.put_object(Bucket=bucket, Key=key, Body=buf.getvalue().encode("utf-8"))
@@ -86,8 +88,8 @@ def test_prepare_new_dataset_creates_version_and_splits(prep_env):
         bucket,
         annotations_key,
         [
-            {"file": "new.txt", "line": "2", "BeginOffset": "0", "EndOffset": "4", "Type": "FTO"},
-            {"file": "new.txt", "line": "5", "BeginOffset": "0", "EndOffset": "4", "Type": "OFAC ORG"},
+            {"File": "training_doc_v1.txt", "Line": "2", "Begin Offset": "0", "End Offset": "4", "Type": "FTO"},
+            {"File": "training_doc_v1.txt", "Line": "5", "Begin Offset": "0", "End Offset": "4", "Type": "OFAC ORG"},
         ],
     )
 
@@ -98,16 +100,16 @@ def test_prepare_new_dataset_creates_version_and_splits(prep_env):
     assert response["run_analysis"]["line_count"] + response["ready_to_train"]["line_count"] == 10
 
     # Prepared artifacts have new naming (_annotation for csv).
-    assert response["prepared"]["text_key"].endswith("training_doc_v1.txt")
-    assert response["prepared"]["annotations_key"].endswith("annotation_v1.csv")
+    assert response["prepared"]["text_key"].endswith("prepare_training_doc_v1.txt")
+    assert response["prepared"]["annotations_key"].endswith("prepare_annotation_v1.csv")
     prepared_txt = _get_lines(s3_client, bucket, response["prepared"]["text_key"])
     assert prepared_txt == text_body.splitlines()
 
     # Splits land in the right prefixes with analysis/ready naming.
-    assert response["run_analysis"]["text_key"].endswith("training_doc_v1.txt")
-    assert response["run_analysis"]["annotations_key"].endswith("annotation_v1.csv")
-    assert response["ready_to_train"]["text_key"].endswith("training_doc_v1.txt")
-    assert response["ready_to_train"]["annotations_key"].endswith("annotation_v1.csv")
+    assert response["run_analysis"]["text_key"].endswith("analysis_training_doc_v1.txt")
+    assert response["run_analysis"]["annotations_key"].endswith("analysis_annotation_v1.csv")
+    assert response["ready_to_train"]["text_key"].endswith("train_training_doc_v1.txt")
+    assert response["ready_to_train"]["annotations_key"].endswith("train_annotation_v1.csv")
 
     analysis_lines = _get_lines(s3_client, bucket, response["run_analysis"]["text_key"])
     train_lines = _get_lines(s3_client, bucket, response["ready_to_train"]["text_key"])
@@ -126,8 +128,8 @@ def test_prepare_appends_to_existing_dataset(prep_env):
         bucket,
         "prepared_data/annotation_v1.csv",
         [
-            {"file": "training_doc_v1.txt", "line": "1", "BeginOffset": "0", "EndOffset": "4", "Type": "FTO"},
-            {"file": "training_doc_v1.txt", "line": "2", "BeginOffset": "0", "EndOffset": "4", "Type": "OFAC POI"},
+            {"File": "prepare_training_doc_v1.txt", "Line": "1", "Begin Offset": "0", "End Offset": "4", "Type": "FTO"},
+            {"File": "prepare_training_doc_v1.txt", "Line": "2", "Begin Offset": "0", "End Offset": "4", "Type": "OFAC POI"},
         ],
     )
 
@@ -139,13 +141,13 @@ def test_prepare_appends_to_existing_dataset(prep_env):
         s3_client,
         bucket,
         annotations_key,
-        [{"file": "newer.txt", "line": "1", "BeginOffset": "0", "EndOffset": "4", "Type": "OFAC ORG"}],
+        [{"File": "training_doc_v2.txt", "Line": "1", "Begin Offset": "0", "End Offset": "4", "Type": "OFAC ORG"}],
     )
 
     response = data_preparation.handler(_s3_event(bucket, text_key, annotations_key), {})
 
     assert response["dataset_version"] == 2
-    assert response["prepared"]["annotations_key"].endswith("annotation_v2.csv")
+    assert response["prepared"]["annotations_key"].endswith("prepare_annotation_v2.csv")
 
     prepared_txt = _get_lines(s3_client, bucket, response["prepared"]["text_key"])
     # Expect old lines then new lines.
@@ -158,8 +160,8 @@ def test_prepare_appends_to_existing_dataset(prep_env):
 
     # Annotations were rewritten to the new combined name and new file names.
     analysis_csv = _get_lines(s3_client, bucket, response["run_analysis"]["annotations_key"])
-    assert analysis_csv[0] == "file,line,BeginOffset,EndOffset,Type"
-    assert all("training_doc_v2.txt" in row for row in analysis_csv[1:])
+    assert analysis_csv[0] == "File,Line,Begin Offset,End Offset,Type"
+    assert all("analysis_training_doc_v2.txt" in row for row in analysis_csv[1:])
 
 
 def test_s3_event_missing_csv_raises(prep_env):
