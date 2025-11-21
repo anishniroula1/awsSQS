@@ -58,13 +58,14 @@ def prep_env(monkeypatch) -> Tuple[str, boto3.client, object]:
         s3_client = boto3.client("s3", region_name="us-east-1")
         s3_client.create_bucket(Bucket=bucket)
 
-        # Use the defaults from the code (hardcoded prefixes/base name) and only set sample fraction.
+        # Use the defaults from the code (hardcoded prefixes/base name) and only set sample fraction/process flag.
         monkeypatch.delenv("PREPARED_PREFIX", raising=False)
         monkeypatch.delenv("RUN_ANALYSIS_PREFIX", raising=False)
         monkeypatch.delenv("READY_TO_TRAIN_PREFIX", raising=False)
         monkeypatch.delenv("TRAINING_DOCS_PREFIX", raising=False)
         monkeypatch.delenv("DATASET_BASE_NAME", raising=False)
         monkeypatch.setenv("SAMPLE_FRACTION", "0.1")
+        monkeypatch.setenv("PROCESS_ANALYSIS", "true")
 
         # Reload modules after mock + env are set so clients pick up the mock.
         importlib.reload(common)
@@ -173,3 +174,26 @@ def test_s3_event_missing_csv_raises(prep_env):
     }
     with pytest.raises(data_preparation.DataPreparationError):
         data_preparation.handler(bad_event, {})
+
+
+def test_process_analysis_false_routes_all_to_training(prep_env, monkeypatch):
+    bucket, s3_client, data_preparation = prep_env
+    # Turn off analysis split.
+    monkeypatch.setenv("PROCESS_ANALYSIS", "false")
+    importlib.reload(data_preparation)
+
+    text_key = "training_docs/one.txt"
+    annotations_key = "training_docs/one.csv"
+    _put_text(s3_client, bucket, text_key, "only line")
+    _put_csv(
+        s3_client,
+        bucket,
+        annotations_key,
+        [{"File": "prepare_training_doc_v1.txt", "Line": "0", "Begin Offset": "0", "End Offset": "4", "Type": "FTO"}],
+    )
+
+    response = data_preparation.handler(_s3_event(bucket, text_key, annotations_key), {})
+
+    assert response["process_analysis"] is False
+    assert response["run_analysis"]["line_count"] == 0
+    assert response["ready_to_train"]["line_count"] == 1
