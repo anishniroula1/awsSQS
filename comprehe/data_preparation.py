@@ -124,7 +124,7 @@ def _merge_datasets(
 ) -> Tuple[List[str], List[Dict], str, str]:
     """Stick the new files on the end of the old ones and bump the version name."""
     combined_name = f"{dataset_base_name}_v{next_version}.txt"
-    combined_annotation_name = f"{dataset_base_name}_v{next_version}.csv"
+    combined_annotation_name = f"annotation_v{next_version}.csv"
 
     # Merge the line buffers.
     combined_lines = [*existing_lines, *new_lines]
@@ -308,6 +308,7 @@ def handler(event, context):
             raise DataPreparationError(f"S3 error writing prepared artifacts: {e}") from e
 
         # Build run-analysis and ready-to-train splits.
+        annotation_name = f"annotation_v{next_version}.csv"
         (
             analysis_lines,
             analysis_annotations,
@@ -318,9 +319,9 @@ def handler(event, context):
         ) = _split_dataset(combined_lines, combined_annotations, sample_fraction, combined_name)
 
         analysis_txt_key = f"{run_analysis_prefix}{combined_name}"
-        analysis_csv_key = f"{run_analysis_prefix}{combined_annotation_name}"
+        analysis_csv_key = f"{run_analysis_prefix}{annotation_name}"
         ready_txt_key = f"{ready_to_train_prefix}{combined_name}"
-        ready_csv_key = f"{ready_to_train_prefix}{combined_annotation_name}"
+        ready_csv_key = f"{ready_to_train_prefix}{annotation_name}"
 
         # Persist new splits for downstream steps.
         try:
