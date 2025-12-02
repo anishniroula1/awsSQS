@@ -30,6 +30,13 @@ def load_s3_text(bucket: str, key: str) -> str:
     obj = s3.get_object(Bucket=bucket, Key=key)
     return obj["Body"].read().decode("utf-8")
 
+def load_s3_bytes(bucket: str, key: str) -> bytes:
+    """
+    Fetch an object from S3 and return its raw bytes.
+    """
+    obj = s3.get_object(Bucket=bucket, Key=key)
+    return obj["Body"].read()
+
 
 def put_s3_text(bucket: str, key: str, body: str, content_type: str = "text/plain") -> None:
     """
