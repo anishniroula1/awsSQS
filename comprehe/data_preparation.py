@@ -1,7 +1,7 @@
 import json
 import logging
 
-from .data_prep.service import DataPreparationService, DataPreparationError
+from data_prep.service import DataPreparationService, DataPreparationError
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -9,7 +9,7 @@ logger.setLevel(logging.INFO)
 
 def handler(event, context):
     """
-    Main Lambda entrypoint. Expects an S3 event with a .txt and .csv upload.
+    Main Lambda entrypoint. Expects an S3 event containing a zip with one .txt and one .csv file.
     In plain English: pull the files, check them, merge with old data, split for analysis/training,
     save everything, and hand back the S3 keys.
     """

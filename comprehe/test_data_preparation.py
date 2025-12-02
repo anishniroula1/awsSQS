@@ -4,20 +4,24 @@ import io
 import json
 import random
 import sys
+import zipfile
 from pathlib import Path
 from typing import Dict, List, Tuple
 
 import boto3
 import pytest
-from moto import mock_aws
+from moto import mock_s3
 
-# Ensure the project root (containing src/) is importable.
+# Ensure both the repo root and the lambda source directory are importable.
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+LAMBDA_ROOT = PROJECT_ROOT / "src" / "lambdas"
+for path in (PROJECT_ROOT, LAMBDA_ROOT):
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
 
 # Import modules up front so reload can work after env is set.
-from src.lambdas import common, data_preparation
+import common
+import data_preparation
 
 
 def _put_text(s3_client, bucket: str, key: str, body: str) -> None:
@@ -39,13 +43,31 @@ def _get_lines(s3_client, bucket: str, key: str) -> List[str]:
     return obj["Body"].read().decode("utf-8").splitlines()
 
 
-def _s3_event(bucket: str, text_key: str, csv_key: str) -> Dict:
-    return {
-        "Records": [
-            {"s3": {"bucket": {"name": bucket}, "object": {"key": text_key}}},
-            {"s3": {"bucket": {"name": bucket}, "object": {"key": csv_key}}},
-        ]
-    }
+def _put_zip_payload(
+    s3_client,
+    bucket: str,
+    key: str,
+    text_body: str,
+    annotations: List[Dict[str, str]],
+    text_name: str = "incoming.txt",
+    csv_name: str = "incoming.csv",
+) -> None:
+    csv_buf = io.StringIO()
+    writer = csv.DictWriter(
+        csv_buf, fieldnames=["File", "Line", "Begin Offset", "End Offset", "Type"]
+    )
+    writer.writeheader()
+    writer.writerows(annotations)
+
+    zip_buf = io.BytesIO()
+    with zipfile.ZipFile(zip_buf, "w") as zf:
+        zf.writestr(text_name, text_body)
+        zf.writestr(csv_name, csv_buf.getvalue())
+    s3_client.put_object(Bucket=bucket, Key=key, Body=zip_buf.getvalue())
+
+
+def _zip_event(bucket: str, key: str) -> Dict:
+    return {"Records": [{"s3": {"bucket": {"name": bucket}, "object": {"key": key}}}]}
 
 
 @pytest.fixture
@@ -53,7 +75,7 @@ def prep_env(monkeypatch) -> Tuple[str, boto3.client, object]:
     """
     Spin up a moto-backed S3, set required env vars, reload modules so they bind to the mock.
     """
-    with mock_aws():
+    with mock_s3():
         bucket = "test-bucket"
         s3_client = boto3.client("s3", region_name="us-east-1")
         s3_client.create_bucket(Bucket=bucket)
@@ -80,21 +102,20 @@ def prep_env(monkeypatch) -> Tuple[str, boto3.client, object]:
 def test_prepare_new_dataset_creates_version_and_splits(prep_env):
     bucket, s3_client, data_preparation = prep_env
 
-    text_key = "training_docs/new.txt"
-    annotations_key = "training_docs/new.csv"
+    zip_key = "training_docs/new.zip"
     text_body = "\n".join([f"line {i}" for i in range(1, 11)])  # 10 lines
-    _put_text(s3_client, bucket, text_key, text_body)
-    _put_csv(
+    _put_zip_payload(
         s3_client,
         bucket,
-        annotations_key,
+        zip_key,
+        text_body,
         [
             {"File": "prepare_training_doc_v1.txt", "Line": "1", "Begin Offset": "0", "End Offset": "4", "Type": "FTO"},
             {"File": "prepare_training_doc_v1.txt", "Line": "4", "Begin Offset": "0", "End Offset": "4", "Type": "OFAC ORG"},
         ],
     )
 
-    response = data_preparation.handler(_s3_event(bucket, text_key, annotations_key), {})
+    response = data_preparation.handler(_zip_event(bucket, zip_key), {})
 
     # Versioning and counts.
     assert response["dataset_version"] == 1
@@ -135,17 +156,16 @@ def test_prepare_appends_to_existing_dataset(prep_env):
     )
 
     # New upload to append.
-    text_key = "training_docs/newer.txt"
-    annotations_key = "training_docs/newer.csv"
-    _put_text(s3_client, bucket, text_key, "new1\nnew2")
-    _put_csv(
+    zip_key = "training_docs/newer.zip"
+    _put_zip_payload(
         s3_client,
         bucket,
-        annotations_key,
+        zip_key,
+        "new1\nnew2",
         [{"File": "prepare_training_doc_v2.txt", "Line": "0", "Begin Offset": "0", "End Offset": "4", "Type": "OFAC ORG"}],
     )
 
-    response = data_preparation.handler(_s3_event(bucket, text_key, annotations_key), {})
+    response = data_preparation.handler(_zip_event(bucket, zip_key), {})
 
     assert response["dataset_version"] == 2
     assert response["prepared"]["annotations_key"].endswith("prepare_annotation_v2.csv")
@@ -167,11 +187,11 @@ def test_prepare_appends_to_existing_dataset(prep_env):
 
 def test_s3_event_missing_csv_raises(prep_env):
     bucket, s3_client, data_preparation = prep_env
-    bad_event = {
-        "Records": [
-            {"s3": {"bucket": {"name": bucket}, "object": {"key": "training_docs/only.txt"}}},
-        ]
-    }
+    zip_buf = io.BytesIO()
+    with zipfile.ZipFile(zip_buf, "w") as zf:
+        zf.writestr("only.txt", "text only")
+    s3_client.put_object(Bucket=bucket, Key="training_docs/bad.zip", Body=zip_buf.getvalue())
+    bad_event = _zip_event(bucket, "training_docs/bad.zip")
     with pytest.raises(data_preparation.DataPreparationError):
         data_preparation.handler(bad_event, {})
 
@@ -182,17 +202,16 @@ def test_process_analysis_false_routes_all_to_training(prep_env, monkeypatch):
     monkeypatch.setenv("PROCESS_ANALYSIS", "false")
     importlib.reload(data_preparation)
 
-    text_key = "training_docs/one.txt"
-    annotations_key = "training_docs/one.csv"
-    _put_text(s3_client, bucket, text_key, "only line")
-    _put_csv(
+    zip_key = "training_docs/one.zip"
+    _put_zip_payload(
         s3_client,
         bucket,
-        annotations_key,
+        zip_key,
+        "only line",
         [{"File": "prepare_training_doc_v1.txt", "Line": "0", "Begin Offset": "0", "End Offset": "4", "Type": "FTO"}],
     )
 
-    response = data_preparation.handler(_s3_event(bucket, text_key, annotations_key), {})
+    response = data_preparation.handler(_zip_event(bucket, zip_key), {})
 
     assert response["process_analysis"] is False
     assert response["run_analysis"]["line_count"] == 0

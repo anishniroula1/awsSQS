@@ -4,8 +4,8 @@ from typing import Dict, List
 
 from botocore.exceptions import BotoCoreError, ClientError
 
-from ..common import get_env, put_s3_text
-from .utils import (
+from common import get_env, put_s3_text
+from data_prep.utils import (
     FILE_COL,
     LINE_COL,
     BEGIN_COL,
@@ -45,10 +45,7 @@ class DataPreparationService:
 
     def process(self, event: Dict) -> Dict:
         """Take an S3 event, merge data, split it, and return all S3 keys."""
-        bucket, text_key, annotations_key = extract_event_keys(event)
-        new_lines = safe_load_text(bucket, text_key, "incoming text")
-        # Pull CSV rows with proper headers.
-        annotations = load_annotations(bucket, annotations_key)
+        bucket, new_lines, annotations = extract_event_keys(event)
 
         # Make sure the CSV never points past the text length (zero-based lines).
         max_line = max((row[LINE_COL] for row in annotations), default=-1)
