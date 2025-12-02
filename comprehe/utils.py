@@ -23,7 +23,10 @@ class DataPreparationError(Exception):
 
 
 def extract_event_keys(event: Dict) -> Tuple[str, List[str], List[Dict]]:
-    """Download the uploaded zip, return text lines and annotation rows."""
+    """
+    Take the S3 event, download the uploaded zip, and split it into text lines plus CSV rows.
+    We only allow one .txt and one .csv in the zip so the rest of the pipeline stays simple.
+    """
     if "Records" not in event or not event["Records"]:
         raise DataPreparationError("Unsupported event; expected S3 put with a zip payload")
 
@@ -47,6 +50,7 @@ def extract_event_keys(event: Dict) -> Tuple[str, List[str], List[Dict]]:
                 raise DataPreparationError(
                     f"Zip payload {zip_key} must contain exactly one .txt and one .csv file"
                 )
+            # We only ever look at one text + one csv file, so read/decode them directly.
             text_raw = zf.read(text_members[0]).decode("utf-8")
             csv_raw = zf.read(csv_members[0]).decode("utf-8")
     except zipfile.BadZipFile as e:
@@ -62,6 +66,10 @@ def extract_event_keys(event: Dict) -> Tuple[str, List[str], List[Dict]]:
 
 
 def _parse_annotations_csv(raw: str, source: str) -> List[Dict]:
+    """
+    Read the annotation CSV, check that all required columns exist, and convert numbers to ints.
+    The `source` string only shows up in error messages so we know which file was bad.
+    """
     try:
         reader = csv.DictReader(io.StringIO(raw))
     except csv.Error as e:
@@ -72,6 +80,7 @@ def _parse_annotations_csv(raw: str, source: str) -> List[Dict]:
         raise DataPreparationError(f"CSV missing required columns: {missing}")
     rows: List[Dict] = []
     for row in reader:
+        # Downstream logic expects ints for offsets/line numbers, so coerce up front.
         rows.append(
             {
                 FILE_COL: row[FILE_COL],
