@@ -2,11 +2,12 @@ import csv
 import io
 import random
 import re
+import zipfile
 from typing import Dict, List, Tuple
 
 from botocore.exceptions import BotoCoreError, ClientError
 
-from ..common import list_keys, load_s3_text, put_s3_text
+from common import list_keys, load_s3_bytes, load_s3_text, put_s3_text
 
 FILE_COL = "File"
 LINE_COL = "Line"
@@ -21,30 +22,50 @@ class DataPreparationError(Exception):
     """Custom error so we know prep broke instead of the whole Lambda blowing up."""
 
 
-def extract_event_keys(event: Dict) -> Tuple[str, str, str]:
-    """Grab the bucket and both object keys from an S3 trigger (needs txt + csv)."""
-    if "Records" in event:
-        records = event["Records"]
-        if len(records) < 2:
-            raise ValueError("S3 trigger needs both the text file and the csv file")
-        bucket = records[0]["s3"]["bucket"]["name"]
-        keys = [r["s3"]["object"]["key"] for r in records]
-        text_key = next((k for k in keys if k.lower().endswith(".txt")), None)
-        csv_key = next((k for k in keys if k.lower().endswith(".csv")), None)
-        if not text_key or not csv_key:
-            raise ValueError("S3 trigger missing txt or csv payload")
-        return bucket, text_key, csv_key
+def extract_event_keys(event: Dict) -> Tuple[str, List[str], List[Dict]]:
+    """Download the uploaded zip, return text lines and annotation rows."""
+    if "Records" not in event or not event["Records"]:
+        raise DataPreparationError("Unsupported event; expected S3 put with a zip payload")
 
-    raise ValueError("Unsupported event; expected S3 put with txt and csv")
+    record = event["Records"][0]
+    bucket = record["s3"]["bucket"]["name"]
+    zip_key = record["s3"]["object"]["key"]
+    if not zip_key.lower().endswith(".zip"):
+        raise DataPreparationError("Incoming object must be a .zip file containing txt and csv data")
+
+    try:
+        zip_bytes = load_s3_bytes(bucket, zip_key)
+    except (ClientError, BotoCoreError) as e:
+        raise DataPreparationError(f"S3 error loading incoming zip {bucket}/{zip_key}: {e}") from e
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+            members = [name for name in zf.namelist() if not name.endswith("/")]
+            text_members = [name for name in members if name.lower().endswith(".txt")]
+            csv_members = [name for name in members if name.lower().endswith(".csv")]
+            if len(text_members) != 1 or len(csv_members) != 1:
+                raise DataPreparationError(
+                    f"Zip payload {zip_key} must contain exactly one .txt and one .csv file"
+                )
+            text_raw = zf.read(text_members[0]).decode("utf-8")
+            csv_raw = zf.read(csv_members[0]).decode("utf-8")
+    except zipfile.BadZipFile as e:
+        raise DataPreparationError(f"Incoming object {zip_key} is not a valid zip file") from e
+    except UnicodeDecodeError as e:
+        raise DataPreparationError(
+            f"Zip payload {zip_key} must contain UTF-8 encoded txt/csv files: {e}"
+        ) from e
+
+    new_lines = text_raw.splitlines()
+    annotations = _parse_annotations_csv(csv_raw, f"{zip_key}:{csv_members[0]}")
+    return bucket, new_lines, annotations
 
 
-def load_annotations(bucket: str, key: str) -> List[Dict]:
-    """Read the CSV, check headers, and return rows as dicts."""
-    raw = load_s3_text(bucket, key)
+def _parse_annotations_csv(raw: str, source: str) -> List[Dict]:
     try:
         reader = csv.DictReader(io.StringIO(raw))
     except csv.Error as e:
-        raise DataPreparationError(f"Failed to read annotations CSV {bucket}/{key}: {e}") from e
+        raise DataPreparationError(f"Failed to read annotations CSV {source}: {e}") from e
 
     missing = [c for c in REQUIRED_COLUMNS if c not in reader.fieldnames]
     if missing:
@@ -61,6 +82,12 @@ def load_annotations(bucket: str, key: str) -> List[Dict]:
             }
         )
     return rows
+
+
+def load_annotations(bucket: str, key: str) -> List[Dict]:
+    """Read the CSV, check headers, and return rows as dicts."""
+    raw = load_s3_text(bucket, key)
+    return _parse_annotations_csv(raw, f"{bucket}/{key}")
 
 
 def write_csv(bucket: str, key: str, rows: List[Dict[str, str]]) -> None:
