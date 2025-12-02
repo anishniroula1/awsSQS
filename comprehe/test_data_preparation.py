@@ -10,7 +10,7 @@ from typing import Dict, List, Tuple
 
 import boto3
 import pytest
-from moto import mock_s3
+from moto import mock_aws
 
 # Ensure both the repo root and the lambda source directory are importable.
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -75,7 +75,7 @@ def prep_env(monkeypatch) -> Tuple[str, boto3.client, object]:
     """
     Spin up a moto-backed S3, set required env vars, reload modules so they bind to the mock.
     """
-    with mock_s3():
+    with mock_aws():
         bucket = "test-bucket"
         s3_client = boto3.client("s3", region_name="us-east-1")
         s3_client.create_bucket(Bucket=bucket)
