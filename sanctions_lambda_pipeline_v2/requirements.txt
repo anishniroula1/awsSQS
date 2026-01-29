@@ -1,0 +1,2 @@
+## boto3 is included in AWS Lambda Python runtimes.
+# rapidfuzz==3.*  # optional for later fuzzy matching
